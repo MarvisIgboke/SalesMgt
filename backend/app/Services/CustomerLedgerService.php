@@ -98,14 +98,47 @@ class CustomerLedgerService
         });
     }
 
+    /**
+     * Reduce what the customer owes without recording a cash payment
+     * (used when a credit sale is cancelled or refunded).
+     */
+    public function refund(Customer $customer, float $amount, string $description, ?string $reference = null, string $type = 'refund'): CustomerTransaction
+    {
+        $amount = round($amount, 2);
+
+        if ($amount <= 0) {
+            throw new ApiException('INVALID_AMOUNT', 'The refund amount must be greater than zero.', 422);
+        }
+
+        return DB::transaction(function () use ($customer, $amount, $description, $reference, $type) {
+            $account = $this->lockAccount($customer);
+            $account->balance = round((float) $account->balance - $amount, 2);
+            $account->save();
+
+            return CustomerTransaction::create([
+                'customer_id' => $customer->id,
+                'business_id' => TenantContext::businessId(),
+                'type' => $type,
+                'description' => $description,
+                'debit' => 0,
+                'credit' => $amount,
+                'balance_after' => $account->balance,
+                'reference' => $reference,
+                'created_by' => auth()->id(),
+            ]);
+        });
+    }
+
     public function statement(Customer $customer, ?string $from = null, ?string $to = null): array
     {
         $base = CustomerTransaction::query()->where('customer_id', $customer->id);
 
-        $opening = (float) (clone $base)
-            ->when($from, fn ($q) => $q->where('created_at', '<', Carbon::parse($from)->startOfDay()))
-            ->selectRaw('COALESCE(SUM(debit - credit), 0) AS opening')
-            ->value('opening');
+        $opening = $from === null
+            ? 0.0
+            : (float) (clone $base)
+                ->where('created_at', '<', Carbon::parse($from)->startOfDay())
+                ->selectRaw('COALESCE(SUM(debit - credit), 0) AS opening')
+                ->value('opening');
 
         $entries = (clone $base)
             ->when($from, fn ($q) => $q->where('created_at', '>=', Carbon::parse($from)->startOfDay()))

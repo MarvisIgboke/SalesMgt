@@ -43,6 +43,21 @@ class Sale extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(Refund::class);
+    }
+
+    public function history(): HasMany
+    {
+        return $this->hasMany(SaleStatusHistory::class);
+    }
+
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(SaleApproval::class);
+    }
+
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);

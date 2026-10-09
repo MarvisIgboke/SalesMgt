@@ -38,4 +38,9 @@ class PurchaseOrder extends Model
     {
         return $this->belongsTo(Branch::class);
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

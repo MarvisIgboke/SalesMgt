@@ -6,8 +6,8 @@ use App\Exceptions\ApiException;
 use App\Models\Expense;
 use App\Models\ExpenseApproval;
 use App\Models\ExpenseCategory;
+use App\Models\AuditLog;
 use App\Support\ApiResponse;
-use App\Support\AuditLog;
 use App\Support\ReferenceGenerator;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
@@ -88,13 +88,13 @@ class ExpenseController extends Controller
         };
 
         $base = fn () => Expense::query()
-            ->when($validated['branch_id'] ?? null, fn ($q, $branch) => $q->where('branch_id', $branch))
-            ->whereBetween('created_at', [$from, $to]);
+            ->when($validated['branch_id'] ?? null, fn ($q, $branch) => $q->where('expenses.branch_id', $branch))
+            ->whereBetween('expenses.created_at', [$from, $to]);
 
-        $total = (float) $base()->whereIn('status', ['approved', 'paid'])->sum('amount');
+        $total = (float) $base()->whereIn('expenses.status', ['approved', 'paid'])->sum('expenses.amount');
 
         $byCategory = $base()
-            ->whereIn('status', ['approved', 'paid'])
+            ->whereIn('expenses.status', ['approved', 'paid'])
             ->join('expense_categories', 'expense_categories.id', '=', 'expenses.expense_category_id')
             ->groupBy('expense_categories.name')
             ->selectRaw('expense_categories.name AS category, COALESCE(SUM(expenses.amount), 0) AS total')

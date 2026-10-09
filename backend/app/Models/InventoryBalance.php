@@ -27,6 +27,11 @@ class InventoryBalance extends Model
         return $this->belongsTo(Product::class);
     }
 
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
+    }
+
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);

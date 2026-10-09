@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\ApiException;
+use App\Http\Middleware\EnsureSubscriptionActive;
 use App\Http\Middleware\Idempotency;
 use App\Http\Middleware\SetRequestId;
 use App\Http\Middleware\SetTenancyContext;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => SetTenancyContext::class,
             'idempotent' => Idempotency::class,
+            'subscription.active' => EnsureSubscriptionActive::class,
         ]);
 
         $middleware->redirectGuestsTo(fn () => response()->json(ApiResponse::error(

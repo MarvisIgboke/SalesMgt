@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Services\CustomerLedgerService;
+use App\Models\AuditLog;
 use App\Support\ApiResponse;
-use App\Support\AuditLog;
 use Illuminate\Http\Request;
 
 class CustomerPaymentController extends Controller

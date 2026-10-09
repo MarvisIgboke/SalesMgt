@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RiskFlag extends Model
 {
@@ -25,5 +26,15 @@ class RiskFlag extends Model
         return [
             'payload' => 'array',
         ];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 }

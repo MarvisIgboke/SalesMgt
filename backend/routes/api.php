@@ -7,7 +7,7 @@ Route::prefix('v1')->group(function () {
     require __DIR__.'/v1_auth.php';
 
     // Authenticated, tenant-scoped endpoints.
-    Route::middleware(['auth:sanctum', 'tenant', 'throttle:auth-api'])->group(function () {
+    Route::middleware(['auth:sanctum', 'tenant', 'subscription.active', 'throttle:auth-api'])->group(function () {
         require __DIR__.'/v1_api.php';
     });
 });

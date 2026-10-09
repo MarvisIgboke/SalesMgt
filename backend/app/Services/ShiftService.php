@@ -86,6 +86,9 @@ class ShiftService
             'notes' => $notes ?? $shift->notes,
         ])->save();
 
+        $reconciliation['actual_cash'] = (float) ($shift->actual_cash ?? 0);
+        $reconciliation['variance'] = (float) ($shift->variance ?? 0);
+
         return [$shift->fresh(), $reconciliation];
     }
 
@@ -112,7 +115,7 @@ class ShiftService
             ->selectRaw('method, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS count')
             ->get();
 
-        $cash = (float) $payments->firstWhere('method', 'cash')->amount ?? 0.0;
+        $cash = (float) ($payments->firstWhere('method', 'cash')->amount ?? 0.0);
 
         return [
             'expected_cash' => round((float) $shift->opening_cash + $cash, 2),

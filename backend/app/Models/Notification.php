@@ -38,7 +38,7 @@ class Notification extends Model
     /**
      * Queue an in-app notification for one user.
      */
-    public static function push(
+    public static function notify(
         int $userId,
         string $type,
         string $title,

@@ -6,7 +6,19 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerPaymentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\ExpiryController;
+use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\AuditController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PosController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\PurchasingController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\RiskController;
+use App\Http\Controllers\SalesController;
+use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SubscriptionController;
@@ -88,3 +100,86 @@ Route::get('/shifts/current', [ShiftController::class, 'current']);
 Route::post('/shifts/open', [ShiftController::class, 'open'])->middleware('idempotent');
 Route::post('/shifts/close', [ShiftController::class, 'close'])->middleware('idempotent');
 Route::post('/shifts/reconcile', [ShiftController::class, 'reconcile']);
+
+// Inventory.
+Route::get('/inventory/dashboard', [InventoryController::class, 'dashboard']);
+Route::get('/inventory/levels', [InventoryController::class, 'levels']);
+Route::get('/inventory/movements', [InventoryController::class, 'movements']);
+Route::post('/inventory/adjustments', [InventoryController::class, 'adjust'])->middleware('idempotent');
+Route::get('/inventory/transfers', [InventoryController::class, 'transfers']);
+Route::post('/inventory/transfers', [InventoryController::class, 'transfer'])->middleware('idempotent');
+Route::get('/inventory/goods-received', [InventoryController::class, 'goodsReceivedList']);
+Route::post('/inventory/goods-received', [InventoryController::class, 'goodsReceived'])->middleware('idempotent');
+Route::get('/inventory/damaged', [InventoryController::class, 'damaged']);
+Route::get('/inventory/expired', [InventoryController::class, 'expired']);
+Route::get('/inventory/approvals', [InventoryController::class, 'approvals']);
+Route::post('/inventory/approvals/{adjustment}', [InventoryController::class, 'approve'])->whereNumber('adjustment');
+
+// Expiry.
+Route::get('/expiry/dashboard', [ExpiryController::class, 'dashboard']);
+Route::get('/expiry/items', [ExpiryController::class, 'items']);
+Route::get('/expiry/buckets', [ExpiryController::class, 'buckets']);
+
+// Point of sale.
+Route::get('/pos/search', [PosController::class, 'search']);
+Route::get('/pos/barcode/{barcode}', [PosController::class, 'barcode']);
+Route::get('/pos/cart', [PosController::class, 'getCart']);
+Route::post('/pos/cart/items', [PosController::class, 'addItem']);
+Route::post('/pos/cart/customer', [PosController::class, 'setCustomer']);
+Route::put('/pos/cart/items/{line}', [PosController::class, 'updateItem'])->whereNumber('line');
+Route::delete('/pos/cart/items/{line}', [PosController::class, 'removeItem'])->whereNumber('line');
+Route::post('/pos/sales/initialize', [PosController::class, 'initialize']);
+Route::post('/pos/sales/charge', [PosController::class, 'charge'])->middleware('idempotent');
+Route::post('/pos/sales/hold', [PosController::class, 'hold']);
+Route::post('/pos/sales/resume', [PosController::class, 'resume']);
+Route::get('/pos/receipts/{reference}', [PosController::class, 'receipt']);
+
+// Sales management & refunds.
+Route::get('/sales', [SalesController::class, 'index']);
+Route::get('/sales/{sale}', [SalesController::class, 'show'])->whereNumber('sale');
+Route::post('/sales/{sale}/cancel', [SalesController::class, 'cancel'])->whereNumber('sale')->middleware('idempotent');
+Route::post('/sales/{sale}/refund', [SalesController::class, 'refund'])->whereNumber('sale')->middleware('idempotent');
+
+// Purchasing.
+Route::get('/purchasing/requisitions', [PurchasingController::class, 'requisitions']);
+Route::post('/purchasing/requisitions', [PurchasingController::class, 'createRequisition'])->middleware('idempotent');
+Route::get('/purchasing/orders', [PurchasingController::class, 'orders']);
+Route::post('/purchasing/orders', [PurchasingController::class, 'createOrder'])->middleware('idempotent');
+Route::get('/purchasing/orders/{order}', [PurchasingController::class, 'order'])->whereNumber('order');
+Route::post('/purchasing/orders/{order}/status', [PurchasingController::class, 'updateOrderStatus'])->whereNumber('order');
+Route::get('/purchasing/invoices', [PurchasingController::class, 'invoices']);
+Route::get('/purchasing/payments', [PurchasingController::class, 'payments']);
+Route::get('/purchasing/returns', [PurchasingController::class, 'returns']);
+
+// Finance.
+Route::get('/finance/approvals', [FinanceController::class, 'approvals']);
+Route::post('/finance/approvals/{approval}', [FinanceController::class, 'decide'])->whereNumber('approval');
+Route::get('/finance/reconciliation', [FinanceController::class, 'reconciliation']);
+Route::get('/finance/receivables-summary', [FinanceController::class, 'receivables']);
+Route::get('/finance/payables-summary', [FinanceController::class, 'payables']);
+
+// Reports.
+Route::get('/reports', [ReportController::class, 'show']);
+Route::get('/reports/export/{format}', [ReportController::class, 'export']);
+Route::get('/reports/download/{file}', [ReportController::class, 'download'])->where('file', '[A-Za-z0-9_.-]+');
+
+// Notifications.
+Route::get('/notifications', [NotificationController::class, 'index']);
+Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+Route::post('/notifications/subscribe', [NotificationController::class, 'subscribe']);
+Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->whereNumber('notification');
+
+// Global search.
+Route::get('/search', [SearchController::class, 'global']);
+
+// Settings.
+Route::get('/settings/preferences', [SettingsController::class, 'preferences']);
+Route::get('/settings', [SettingsController::class, 'show']);
+Route::put('/settings', [SettingsController::class, 'update']);
+
+// Audit & risk.
+Route::get('/audit-logs', [AuditController::class, 'index']);
+Route::get('/audit-logs/{audit}', [AuditController::class, 'show'])->whereNumber('audit');
+Route::get('/risk-flags', [RiskController::class, 'index']);
+Route::post('/risk-flags/{flag}/resolve', [RiskController::class, 'resolve'])->whereNumber('flag');

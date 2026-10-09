@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Exceptions\ApiException;
 use App\Models\Shift;
 use App\Services\ShiftService;
+use App\Models\AuditLog;
 use App\Support\ApiResponse;
-use App\Support\AuditLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 

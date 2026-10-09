@@ -6,8 +6,8 @@ use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Sale;
 use App\Services\CustomerLedgerService;
+use App\Models\AuditLog;
 use App\Support\ApiResponse;
-use App\Support\AuditLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 
