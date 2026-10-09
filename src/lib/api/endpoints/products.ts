@@ -73,8 +73,8 @@ export const productsApi = {
   addBarcode: (id: number, barcode: string) =>
     http.post<ApiEnvelope<ProductBarcode>>(`/products/${id}/barcodes`, { barcode }),
 
-  removeBarcode: (id: number, barcodeId: number) =>
-    http.delete<ApiEnvelope<null>>(`/products/${id}/barcodes/${barcodeId}`),
+  removeBarcode: (id: number, barcode: string | number) =>
+    http.delete<ApiEnvelope<null>>(`/products/${id}/barcodes/${barcode}`),
 
   categories: () => http.get<ApiEnvelope<Array<{ id: number; name: string }>>>('/product-categories'),
 
