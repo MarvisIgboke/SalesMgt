@@ -92,7 +92,7 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
     const receipt = result.sale?.receipt
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center gap-2">
               {result.status === 'completed' ? (
@@ -207,7 +207,7 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
         if (!v) handleClose()
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Take payment</DialogTitle>
           <DialogDescription>

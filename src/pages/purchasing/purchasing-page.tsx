@@ -501,7 +501,7 @@ function OrderDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New purchase order</DialogTitle>
           <DialogDescription>
@@ -696,7 +696,7 @@ function RequisitionDialog({ products, defaultBranchId, onClose }: RequisitionDi
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New requisition</DialogTitle>
           <DialogDescription>

@@ -423,7 +423,7 @@ export function ShiftsPage() {
       </Tabs>
 
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Open shift</DialogTitle>
             <DialogDescription>Set the opening cash float for the current branch.</DialogDescription>
@@ -458,7 +458,7 @@ export function ShiftsPage() {
       </Dialog>
 
       <Dialog open={closeDialog} onOpenChange={setCloseDialog}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Close shift</DialogTitle>
             <DialogDescription>Record the actual cash count and close the active shift.</DialogDescription>

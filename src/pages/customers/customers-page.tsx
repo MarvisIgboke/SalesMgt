@@ -287,7 +287,7 @@ function CustomerEditor({ customer, form, onChange, saving, onCancel, onSave }: 
 
   return (
     <Dialog open onOpenChange={onCancel}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{customer ? 'Edit customer' : 'New customer'}</DialogTitle>
           <DialogDescription>
@@ -393,7 +393,7 @@ function PaymentDialog({ customer, onClose }: PaymentDialogProps) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>
@@ -473,7 +473,7 @@ function StatementDialog({ customer, onClose }: StatementDialogProps) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Statement — {customer.name}</DialogTitle>
           <DialogDescription>Ledger entries as calculated by the backend.</DialogDescription>

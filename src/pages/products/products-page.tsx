@@ -387,7 +387,7 @@ export function ProductsPage() {
 
       {deleting && (
         <Dialog open onOpenChange={() => setDeleting(null)}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Delete product</DialogTitle>
               <DialogDescription>

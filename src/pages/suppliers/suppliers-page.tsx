@@ -266,7 +266,7 @@ function SupplierEditor({ supplier, form, onChange, saving, onCancel, onSave }: 
 
   return (
     <Dialog open onOpenChange={onCancel}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{supplier ? 'Edit supplier' : 'New supplier'}</DialogTitle>
           <DialogDescription>

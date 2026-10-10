@@ -204,11 +204,13 @@ export function PosPage() {
 
           {/* Mobile cart sheet */}
           <Sheet open={mobilePanel === 'cart'} onOpenChange={(o) => setMobilePanel(o ? 'cart' : 'shop')}>
-            <SheetContent side="bottom" className="h-[80dvh] rounded-t-2xl p-0">
-              <SheetHeader className="border-b border-border/60 px-4 py-3">
+            <SheetContent side="bottom" className="h-[80dvh] rounded-t-2xl p-0 flex flex-col max-h-[90dvh] overflow-hidden">
+              <SheetHeader className="border-b border-border/60 px-4 py-3 flex-shrink-0">
                 <SheetTitle>Current sale</SheetTitle>
               </SheetHeader>
-              <CartPanel onPay={() => { setMobilePanel('shop'); setPayOpen(true) }} paying={false} />
+              <div className="flex-1 overflow-y-auto">
+                <CartPanel onPay={() => { setMobilePanel('shop'); setPayOpen(true) }} paying={false} />
+              </div>
             </SheetContent>
           </Sheet>
         </div>

@@ -96,7 +96,7 @@ export function Sidebar() {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-5 no-scrollbar">
+        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-5 max-h-[calc(100vh-4rem)]">
           {navSections.map((section) => (
             <div key={section.id}>
               {!collapsed && (

@@ -5,11 +5,15 @@ namespace App\Http\Controllers;
 use App\Exceptions\ApiException;
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\Subscription;
+use App\Models\SubscriptionPlan;
+use App\Models\Wallet;
 use App\Services\BusinessContextService;
 use App\Support\ApiResponse;
 use App\Support\Presenter;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class BusinessController extends Controller
 {
@@ -38,6 +42,62 @@ class BusinessController extends Controller
         return ApiResponse::paginator($paginator, map: fn (Branch $branch) => Presenter::branch($branch));
     }
 
+    public function storeBranch(Request $request)
+    {
+        abort_unless($request->user()->can('staff.edit') || $request->user()->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'code' => ['nullable', 'string', 'max:50'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'type' => ['nullable', 'string', 'max:50'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $branch = Branch::create([
+            'business_id' => TenantContext::businessId(),
+            'name' => $data['name'],
+            'code' => $data['code'] ?? null,
+            'address' => $data['address'] ?? null,
+            'phone' => $data['phone'] ?? null,
+            'type' => $data['type'] ?? null,
+            'is_active' => $data['is_active'] ?? true,
+            'defaults' => ['currency' => 'NGN'],
+        ]);
+
+        return ApiResponse::success(Presenter::branch($branch), 'Branch created.');
+    }
+
+    public function updateBranch(Request $request, int $branch)
+    {
+        abort_unless($request->user()->can('staff.edit') || $request->user()->isSuperAdmin(), 403);
+
+        $branch = Branch::query()->findOrFail($branch);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'code' => ['nullable', 'string', 'max:50'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'type' => ['nullable', 'string', 'max:50'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $branch->update($data);
+
+        return ApiResponse::success(Presenter::branch($branch), 'Branch updated.');
+    }
+
+    public function destroyBranch(Request $request, int $branch)
+    {
+        abort_unless($request->user()->isSuperAdmin(), 403);
+
+        $branch = Branch::query()->findOrFail($branch);
+        $branch->delete();
+
+        return ApiResponse::success(null, 'Branch deleted.');
+    }
+
     public function listBusinesses(Request $request)
     {
         $user = $request->user();
@@ -53,6 +113,56 @@ class BusinessController extends Controller
                 $business->wallet,
             ))->values()->all(),
         );
+    }
+
+    public function storeBusiness(Request $request)
+    {
+        abort_unless($request->user()->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'slug' => ['nullable', 'string', 'max:255'],
+            'currency' => ['nullable', 'string', 'max:8'],
+            'timezone' => ['nullable', 'string', 'max:64'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'plan_id' => ['nullable', 'integer'],
+        ]);
+
+        $slug = $data['slug'] ?? Str::slug($data['name']);
+        $business = Business::firstOrCreate(
+            ['slug' => $slug],
+            [
+                'name' => $data['name'],
+                'slug' => $slug,
+                'currency' => $data['currency'] ?? 'NGN',
+                'timezone' => $data['timezone'] ?? 'Africa/Lagos',
+                'address' => $data['address'] ?? null,
+                'email' => $data['email'] ?? null,
+                'phone' => $data['phone'] ?? null,
+            ]
+        );
+
+        if (!$business->wallet) {
+            Wallet::create(['business_id' => $business->id, 'currency' => $business->currency, 'balance' => 0, 'pending' => 0]);
+        }
+
+        if (!$business->subscription) {
+            $plan = SubscriptionPlan::find($data['plan_id']) ?? SubscriptionPlan::where('slug', 'starter')->first();
+            if ($plan) {
+                Subscription::create([
+                    'business_id' => $business->id,
+                    'plan_id' => $plan->id,
+                    'status' => 'trial',
+                    'starts_at' => now()->toDateString(),
+                    'trial_ends_at' => now()->addDays(30)->toDateString(),
+                    'limits' => $plan->limits(),
+                ]);
+            }
+        }
+
+        return ApiResponse::success(Presenter::business($business, $business->subscription, $business->wallet), 'Business created.');
     }
 
     public function switchBranch(Request $request)
