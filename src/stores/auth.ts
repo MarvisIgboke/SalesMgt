@@ -14,6 +14,7 @@ interface AuthState {
   login: (input: LoginInput) => Promise<void>
   hydrate: () => Promise<void>
   logout: () => Promise<void>
+  setSession: (session: AuthSession | null) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -64,6 +65,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     clearToken()
     setRequestContext({ businessId: null, branchId: null })
     set({ status: 'unauthenticated', session: null })
+  },
+
+  setSession(session) {
+    set({ session })
   },
 }))
 

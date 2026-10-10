@@ -24,13 +24,16 @@ class SalesService
 
     public function index(array $filters, int $perPage): LengthAwarePaginator
     {
-        $query = Sale::query()->with(['customer', 'branch', 'user']);
+        $query = Sale::query()->with(['customer', 'branch', 'user', 'payments']);
 
         $query
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['payment_status'] ?? null, fn ($q, $v) => $q->where('payment_status', $v))
             ->when($filters['customer_id'] ?? null, fn ($q, $v) => $q->where('customer_id', (int) $v))
             ->when($filters['branch_id'] ?? null, fn ($q, $v) => $q->where('branch_id', (int) $v))
+            ->when($filters['user_id'] ?? null, fn ($q, $v) => $q->where('user_id', (int) $v))
+            ->when($filters['payment_method'] ?? null, fn ($q, $v) => $q->whereHas('payments', fn ($p) => $p->where('method', $v)))
+            ->when($filters['product_id'] ?? null, fn ($q, $v) => $q->whereHas('items', fn ($i) => $i->where('product_id', (int) $v)))
             ->when($filters['from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
             ->when($filters['to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
             ->when($filters['search'] ?? null, function ($q, $v) {
@@ -58,6 +61,7 @@ class SalesService
             'customer_name' => $sale->customer?->name,
             'branch_id' => $sale->branch_id,
             'branch_name' => $sale->branch?->name,
+            'user_id' => $sale->user_id,
             'sales_rep' => $sale->user?->name ?? 'Staff',
             'status' => $sale->status,
             'payment_status' => $sale->payment_status,
@@ -70,6 +74,9 @@ class SalesService
             'currency' => $sale->currency,
             'item_count' => $sale->relationLoaded('items') ? $sale->items->count() : $sale->items()->count(),
             'refunded_total' => $this->refundedTotal($sale),
+            'payment_methods' => $sale->relationLoaded('payments')
+                ? $sale->payments->pluck('method')->unique()->values()->all()
+                : [],
             'created_at' => $sale->created_at?->toIso8601String(),
         ];
 
@@ -100,6 +107,8 @@ class SalesService
                 'status' => $payment->status,
                 'created_at' => $payment->created_at?->toIso8601String(),
             ])->values()->all();
+
+            $data['payment_methods'] = $sale->payments->pluck('method')->unique()->values()->all();
 
             $data['refunds'] = $sale->refunds->map(fn (Refund $refund) => [
                 'id' => $refund->id,

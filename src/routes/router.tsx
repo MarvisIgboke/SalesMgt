@@ -19,11 +19,20 @@ const DashboardPage = lazy(() =>
   import('@/pages/dashboard/dashboard-page').then((m) => ({ default: m.DashboardPage })),
 )
 const PosPage = lazy(() => import('@/pages/pos/pos-page').then((m) => ({ default: m.PosPage })))
+const SalesHistoryPage = lazy(() =>
+  import('@/pages/sales/sales-history-page').then((m) => ({ default: m.SalesHistoryPage })),
+)
 const ProductsPage = lazy(() =>
   import('@/pages/products/products-page').then((m) => ({ default: m.ProductsPage })),
 )
+const CatalogPage = lazy(() =>
+  import('@/pages/catalog/catalog-page').then((m) => ({ default: m.CatalogPage })),
+)
 const InventoryPage = lazy(() =>
   import('@/pages/inventory/inventory-page').then((m) => ({ default: m.InventoryPage })),
+)
+const StockTracePage = lazy(() =>
+  import('@/pages/inventory/stock-trace-page').then((m) => ({ default: m.StockTracePage })),
 )
 const ExpiryPage = lazy(() =>
   import('@/pages/expiry/expiry-page').then((m) => ({ default: m.ExpiryPage })),
@@ -44,6 +53,12 @@ const ExpensesPage = lazy(() =>
   import('@/pages/expenses/expenses-page').then((m) => ({ default: m.ExpensesPage })),
 )
 const StaffPage = lazy(() => import('@/pages/staff/staff-page').then((m) => ({ default: m.StaffPage })))
+const BranchesPage = lazy(() =>
+  import('@/pages/branches/branches-page').then((m) => ({ default: m.BranchesPage })),
+)
+const BusinessesPage = lazy(() =>
+  import('@/pages/businesses/businesses-page').then((m) => ({ default: m.BusinessesPage })),
+)
 const ShiftsPage = lazy(() =>
   import('@/pages/shifts/shifts-page').then((m) => ({ default: m.ShiftsPage })),
 )
@@ -56,11 +71,17 @@ const NotificationsPage = lazy(() =>
 const SubscriptionPage = lazy(() =>
   import('@/pages/subscription/subscription-page').then((m) => ({ default: m.SubscriptionPage })),
 )
+const PlansPage = lazy(() =>
+  import('@/pages/subscription/plans-page').then((m) => ({ default: m.PlansPage })),
+)
 const WalletPage = lazy(() =>
   import('@/pages/wallet/wallet-page').then((m) => ({ default: m.WalletPage })),
 )
 const SettingsPage = lazy(() =>
   import('@/pages/settings/settings-page').then((m) => ({ default: m.SettingsPage })),
+)
+const ProfilePage = lazy(() =>
+  import('@/pages/settings/profile-page').then((m) => ({ default: m.ProfilePage })),
 )
 const NotFoundPage = lazy(() =>
   import('@/pages/not-found-page').then((m) => ({ default: m.NotFoundPage })),
@@ -110,6 +131,14 @@ export const router = createBrowserRouter([
                 ),
               },
               {
+                path: '/sales',
+                element: (
+                  <Page variant="cards">
+                    <SalesHistoryPage />
+                  </Page>
+                ),
+              },
+              {
                 path: '/products',
                 element: (
                   <Page variant="cards">
@@ -118,10 +147,26 @@ export const router = createBrowserRouter([
                 ),
               },
               {
+                path: '/catalog',
+                element: (
+                  <Page variant="cards">
+                    <CatalogPage />
+                  </Page>
+                ),
+              },
+              {
                 path: '/inventory',
                 element: (
                   <Page variant="cards">
                     <InventoryPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/inventory/trace',
+                element: (
+                  <Page variant="cards">
+                    <StockTracePage />
                   </Page>
                 ),
               },
@@ -182,6 +227,14 @@ export const router = createBrowserRouter([
                 ),
               },
               {
+                path: '/branches',
+                element: (
+                  <Page variant="cards">
+                    <BranchesPage />
+                  </Page>
+                ),
+              },
+              {
                 path: '/shifts',
                 element: (
                   <Page variant="cards">
@@ -214,10 +267,34 @@ export const router = createBrowserRouter([
                 ),
               },
               {
+                path: '/subscription/plans',
+                element: (
+                  <Page variant="cards">
+                    <PlansPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/businesses',
+                element: (
+                  <Page variant="cards">
+                    <BusinessesPage />
+                  </Page>
+                ),
+              },
+              {
                 path: '/wallet',
                 element: (
                   <Page variant="cards">
                     <WalletPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/settings/profile',
+                element: (
+                  <Page variant="cards">
+                    <ProfilePage />
                   </Page>
                 ),
               },

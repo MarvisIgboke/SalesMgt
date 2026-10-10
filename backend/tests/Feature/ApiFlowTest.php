@@ -100,37 +100,42 @@ class ApiFlowTest extends TestCase
         $this->assertSame(1, Sale::query()->count());
     }
 
-    public function test_over_selling_requires_approval_then_finance_approves(): void
+    public function test_over_selling_is_blocked_when_stock_is_insufficient(): void
     {
         [$admin, $branch, $product] = $this->scene('WTR-75');
         $this->ensureStock($product, $branch, 2);
 
-        $cart = $this->postJson('/api/v1/pos/cart/items', [
+        $this->postJson('/api/v1/pos/cart/items', [
             'product_id' => $product->id,
             'quantity' => 5,
+        ])->assertStatus(422)->assertJsonPath('code', 'insufficient_stock');
+
+        $this->assertSame(0, Sale::query()->count());
+        $this->assertSame(2.0, $this->balanceFor($product, $branch));
+    }
+
+    public function test_selling_all_stock_then_further_sale_is_blocked(): void
+    {
+        [$admin, $branch, $product] = $this->scene('WTR-75');
+        $this->ensureStock($product, $branch, 3);
+
+        $cart = $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 3,
         ])->assertOk();
 
-        $reference = $cart->json('data.reference');
-
-        $charge = $this->postJson('/api/v1/pos/sales/charge', [
-            'reference' => $reference,
+        $this->postJson('/api/v1/pos/sales/charge', [
+            'reference' => $cart->json('data.reference'),
             'method' => 'cash',
             'cash_received' => 2000,
-        ])->assertOk();
+        ])->assertOk()->assertJsonPath('data.status', 'completed');
 
-        $charge->assertJsonPath('data.status', 'awaiting_approval');
+        $this->assertSame(0.0, $this->balanceFor($product, $branch));
 
-        $sale = Sale::query()->firstOrFail();
-        $this->assertSame('awaiting_approval', $sale->status);
-
-        $approvalId = \App\Models\SaleApproval::query()->firstOrFail()->id;
-
-        $this->postJson("/api/v1/finance/approvals/{$approvalId}", [
-            'decision' => 'approved',
-        ])->assertOk();
-
-        $this->assertSame('completed', $sale->fresh()->status);
-        $this->assertSame(5.0, $this->movedOut($product, $branch));
+        $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertStatus(422)->assertJsonPath('code', 'insufficient_stock');
     }
 
     public function test_purchasing_order_receive_increases_stock(): void

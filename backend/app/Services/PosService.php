@@ -300,6 +300,17 @@ class PosService
         $taxRate = (float) $product->tax_rate;
 
         $items = $cart->items ?? [];
+
+        $existing = 0.0;
+        foreach ($items as $line) {
+            if ((int) $line['product_id'] === $productId && ($line['variant_id'] ?? null) === $variantId) {
+                $existing = (float) $line['quantity'];
+                break;
+            }
+        }
+
+        $this->assertStockAvailable($cart, $product, $variantId, $existing + $quantity);
+
         $matched = false;
         foreach ($items as &$line) {
             if ((int) $line['product_id'] === $productId && ($line['variant_id'] ?? null) === $variantId) {
@@ -347,6 +358,10 @@ class PosService
                 if ($quantity <= 0) {
                     unset($items[$index]);
                 } else {
+                    $product = Product::query()->find((int) $line['product_id']);
+                    if ($product !== null) {
+                        $this->assertStockAvailable($cart, $product, $line['variant_id'] ?? null, $quantity);
+                    }
                     $items[$index]['quantity'] = round($quantity, 3);
                 }
                 break;
@@ -406,14 +421,27 @@ class PosService
             throw new ApiException('empty_cart', 'The cart is empty.', 422);
         }
 
+        foreach ($items as $line) {
+            $available = $cart->branch_id === null
+                ? 0.0
+                : $this->stockFor((int) $cart->branch_id, (int) $line['product_id'], $line['variant_id'] ?? null);
+            if ((float) $line['quantity'] > $available + 0.0001) {
+                throw new ApiException('insufficient_stock', 'Insufficient stock for '.$line['product_name'].'.', 422);
+            }
+        }
+
         $method = (string) ($input['method'] ?? 'cash');
         $total = round((float) $cart->total, 2);
         $customer = $cart->customer_id ? Customer::query()->with('account')->find($cart->customer_id) : null;
 
-        $requiresApproval = $this->cartRequiresApproval($cart);
-        $approvalKind = 'inventory';
+        $requiresApproval = false;
+        $approvalKind = 'credit';
 
         if ($method === 'credit') {
+            if (! $user->can('sales.credit')) {
+                throw new ApiException('forbidden', 'You do not have permission to make credit sales.', 403);
+            }
+
             if ($customer === null) {
                 throw new ApiException('customer_required', 'A credit sale requires a customer.', 422);
             }
@@ -511,16 +539,21 @@ class PosService
         return $result;
     }
 
-    private function cartRequiresApproval(PosCart $cart): bool
+    private function assertStockAvailable(PosCart $cart, Product $product, ?int $variantId, float $quantity): void
     {
-        foreach ($cart->items ?? [] as $line) {
-            $stock = $cart->branch_id === null ? 0.0 : $this->stockFor((int) $cart->branch_id, (int) $line['product_id'], $line['variant_id'] ?? null);
-            if ((float) $line['quantity'] > $stock) {
-                return true;
-            }
+        if ($cart->branch_id === null) {
+            return;
         }
 
-        return false;
+        $available = $this->stockFor((int) $cart->branch_id, (int) $product->id, $variantId);
+
+        if ($quantity > $available + 0.0001) {
+            throw new ApiException(
+                'insufficient_stock',
+                'Only '.rtrim(rtrim(number_format($available, 3, '.', ''), '0'), '.').' in stock for '.$product->name.'.',
+                422,
+            );
+        }
     }
 
     private function saleItemAttributes(array $line, float $costPrice): array

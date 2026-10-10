@@ -176,6 +176,57 @@ class StaffController extends Controller
         return ApiResponse::success(PermissionCatalog::catalog());
     }
 
+    public function staffPermissions(Request $request, int $staff)
+    {
+        abort_unless($request->user()->can('staff.permissions') || $request->user()->can('staff.view'), 403);
+
+        $user = $this->find($staff);
+
+        return ApiResponse::success([
+            'user_id' => $user->id,
+            'name' => $user->name,
+            'roles' => $user->getRoleNames()->values()->all(),
+            'permissions' => $user->getDirectPermissions()->pluck('name')->values()->all(),
+            'effective_permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
+            'catalog' => PermissionCatalog::catalog(),
+        ]);
+    }
+
+    public function syncPermissions(Request $request, int $staff)
+    {
+        abort_unless($request->user()->can('staff.permissions'), 403);
+
+        $user = $this->find($staff);
+
+        if ($user->id === $request->user()->id) {
+            throw new ApiException('CANNOT_EDIT_OWN_PERMISSIONS', 'You cannot change your own permissions.', 422);
+        }
+
+        $data = $request->validate([
+            'permissions' => ['present', 'array'],
+            'permissions.*' => ['string'],
+        ]);
+
+        $requested = array_values(array_intersect($data['permissions'], PermissionCatalog::all()));
+
+        if (! $request->user()->isSuperAdmin()) {
+            $actorPermissions = $request->user()->getAllPermissions()->pluck('name')->all();
+            $requested = array_values(array_intersect($requested, $actorPermissions));
+        }
+
+        $user->syncPermissions($requested);
+
+        AuditLog::record('staff.permissions_synced', 'user', $user->id, ['permissions' => $requested]);
+
+        $fresh = User::with(['permissions', 'roles.permissions'])->findOrFail($user->id);
+
+        return ApiResponse::success([
+            'user_id' => $fresh->id,
+            'permissions' => $fresh->getDirectPermissions()->pluck('name')->values()->all(),
+            'effective_permissions' => $fresh->getAllPermissions()->pluck('name')->values()->all(),
+        ], 'Permissions updated.');
+    }
+
     public function activity(Request $request)
     {
         abort_unless($request->user()->can('staff.view') || $request->user()->can('audit.view'), 403);

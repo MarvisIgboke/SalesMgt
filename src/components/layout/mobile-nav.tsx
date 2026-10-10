@@ -1,24 +1,38 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard,
+  Clock,
+  Menu,
   Package,
-  Users,
-  BarChart3,
+  ReceiptText,
   ScanLine,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAppStore } from '@/stores/app'
+import { usePermissions } from '@/lib/use-permissions'
 
-const tabs = [
-  { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Shop', path: '/products', icon: Package },
-  { label: 'Receive', path: '/notifications', icon: Users },
-  { label: 'Reports', path: '/reports', icon: BarChart3 },
+interface MobileTab {
+  label: string
+  path: string
+  icon: LucideIcon
+  permissions: string[]
+}
+
+const tabs: MobileTab[] = [
+  { label: 'Sales', path: '/sales', icon: ReceiptText, permissions: ['sales.view'] },
+  { label: 'Shifts', path: '/shifts', icon: Clock, permissions: ['shifts.view', 'shifts.operate'] },
+  { label: 'Inventory', path: '/inventory', icon: Package, permissions: ['inventory.view'] },
 ]
 
 export function MobileNav() {
+  const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen)
+  const { canAny } = usePermissions()
+
+  const canSell = canAny('sales.create')
+
   return (
-    <>
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-border/70 bg-surface/95 backdrop-blur-xl lg:hidden">
+    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-border/70 bg-surface/95 backdrop-blur-xl lg:hidden">
+      {canSell && (
         <NavLink
           to="/pos"
           className={({ isActive }) =>
@@ -29,9 +43,12 @@ export function MobileNav() {
           }
         >
           <ScanLine className="h-5 w-5" />
-          <span className="text-[10px] font-semibold">Scan / Sell</span>
+          <span className="text-[10px] font-semibold">Sell</span>
         </NavLink>
-        {tabs.map((tab) => (
+      )}
+      {tabs
+        .filter((tab) => canAny(...tab.permissions))
+        .map((tab) => (
           <NavLink
             key={tab.path}
             to={tab.path}
@@ -46,7 +63,14 @@ export function MobileNav() {
             {tab.label}
           </NavLink>
         ))}
-      </nav>
-    </>
+      <button
+        type="button"
+        onClick={() => setMobileNavOpen(true)}
+        className="flex flex-1 flex-col items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors"
+      >
+        <Menu className="h-5 w-5" />
+        More
+      </button>
+    </nav>
   )
 }

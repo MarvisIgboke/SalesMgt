@@ -51,6 +51,26 @@ export interface ProductBarcode {
   barcode: string
 }
 
+export interface CatalogItem {
+  id: number
+  name: string
+}
+
+export const catalogApi = {
+  categories: () => http.get<ApiEnvelope<CatalogItem[]>>('/product-categories'),
+  createCategory: (name: string) =>
+    http.post<ApiEnvelope<CatalogItem>>('/product-categories', { name }),
+  updateCategory: (id: number, name: string) =>
+    http.put<ApiEnvelope<CatalogItem>>(`/product-categories/${id}`, { name }),
+  deleteCategory: (id: number) => http.delete<ApiEnvelope<null>>(`/product-categories/${id}`),
+
+  brands: () => http.get<ApiEnvelope<CatalogItem[]>>('/product-brands'),
+  createBrand: (name: string) => http.post<ApiEnvelope<CatalogItem>>('/product-brands', { name }),
+  updateBrand: (id: number, name: string) =>
+    http.put<ApiEnvelope<CatalogItem>>(`/product-brands/${id}`, { name }),
+  deleteBrand: (id: number) => http.delete<ApiEnvelope<null>>(`/product-brands/${id}`),
+}
+
 export const productsApi = {
   list: (params?: {
     page?: number

@@ -17,7 +17,7 @@ class SalesController extends Controller
     {
         $this->authorize($request, ['sales.view']);
 
-        $filters = $request->only(['status', 'payment_status', 'customer_id', 'branch_id', 'from', 'to', 'search']);
+        $filters = $request->only(['status', 'payment_status', 'customer_id', 'branch_id', 'user_id', 'payment_method', 'product_id', 'from', 'to', 'search']);
 
         $paginator = $this->sales->index($filters, $this->perPage($request));
 

@@ -91,7 +91,7 @@ export const useAppStore = create<AppState>((set) => ({
   async switchBranch(branchId) {
     set({ switchPending: true })
     try {
-      const { data } = await businessApi.switchBranch(branchId ?? 0)
+      const { data } = await businessApi.switchBranch(branchId ?? null)
       setRequestContext({ branchId: branchId ?? null })
       set({ context: data as ActiveContext, switchPending: false })
     } catch (error) {

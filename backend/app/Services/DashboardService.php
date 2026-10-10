@@ -9,13 +9,13 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
-    public function build(string $period = 'today', ?int $branchId = null): array
+    public function build(string $period = 'today', ?int $branchId = null, ?string $fromDate = null, ?string $toDate = null): array
     {
         $business = Business::query()->with('wallet')->findOrFail(TenantContext::businessId());
         $currency = $business->currency;
         $branchId ??= TenantContext::branchId();
 
-        [$from, $to] = $this->range($period);
+        [$from, $to] = $this->range($period, $fromDate, $toDate);
 
         $salesQuery = fn () => DB::table('sales')
             ->where('business_id', $business->id)
@@ -124,9 +124,14 @@ class DashboardService
     /**
      * @return array{0: Carbon, 1: Carbon}
      */
-    private function range(string $period): array
+    private function range(string $period, ?string $from = null, ?string $to = null): array
     {
+        if ($period === 'custom' && $from !== null && $to !== null) {
+            return [Carbon::parse($from)->startOfDay(), Carbon::parse($to)->endOfDay()];
+        }
+
         return match ($period) {
+            'yesterday' => [now()->subDay()->startOfDay(), now()->subDay()->endOfDay()],
             'week' => [now()->startOfWeek(), now()->endOfWeek()],
             'month' => [now()->startOfMonth(), now()->endOfMonth()],
             default => [now()->startOfDay(), now()->endOfDay()],

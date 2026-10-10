@@ -8,6 +8,7 @@ use App\Models\SubscriptionPlan;
 use App\Services\BusinessContextService;
 use App\Support\ApiResponse;
 use App\Support\TenantContext;
+use App\Exceptions\ApiException;
 use Illuminate\Http\Request;
 
 class SubscriptionController extends Controller
@@ -112,6 +113,19 @@ class SubscriptionController extends Controller
         abort_unless($request->user()->isSuperAdmin(), 403);
 
         $plan = SubscriptionPlan::query()->findOrFail($plan);
+
+        $inUse = Subscription::withoutGlobalScope('tenant-business')
+            ->where('plan_id', $plan->id)
+            ->exists();
+
+        if ($inUse) {
+            throw new ApiException(
+                'PLAN_IN_USE',
+                'This plan is assigned to one or more businesses. Reassign them before deleting it.',
+                409,
+            );
+        }
+
         $plan->delete();
 
         return ApiResponse::success(null, 'Plan deleted.');

@@ -12,6 +12,7 @@ use App\Services\BusinessContextService;
 use App\Support\ApiResponse;
 use App\Support\Presenter;
 use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -103,8 +104,10 @@ class BusinessController extends Controller
         $user = $request->user();
 
         $businesses = $user->isSuperAdmin()
-            ? Business::query()->with(['subscription.plan', 'wallet'])->orderBy('name')->get()
-            : Business::query()->with(['subscription.plan', 'wallet'])->whereKey($user->business_id)->get();
+            ? Business::query()->orderBy('name')->get()
+            : Business::query()->whereKey($user->business_id)->get();
+
+        $this->hydrateSubscriptions($businesses);
 
         return ApiResponse::success(
             $businesses->map(fn (Business $business) => Presenter::business(
@@ -144,11 +147,11 @@ class BusinessController extends Controller
             ]
         );
 
-        if (!$business->wallet) {
+        if (! Wallet::withoutGlobalScope('tenant-business')->where('business_id', $business->id)->exists()) {
             Wallet::create(['business_id' => $business->id, 'currency' => $business->currency, 'balance' => 0, 'pending' => 0]);
         }
 
-        if (!$business->subscription) {
+        if (! Subscription::withoutGlobalScope('tenant-business')->where('business_id', $business->id)->exists()) {
             $plan = SubscriptionPlan::find($data['plan_id']) ?? SubscriptionPlan::where('slug', 'starter')->first();
             if ($plan) {
                 Subscription::create([
@@ -162,34 +165,111 @@ class BusinessController extends Controller
             }
         }
 
+        $business = Business::query()->findOrFail($business->id);
+        $this->hydrateSubscriptions(new Collection([$business]));
+
         return ApiResponse::success(Presenter::business($business, $business->subscription, $business->wallet), 'Business created.');
+    }
+
+    public function assignPlan(Request $request, int $business)
+    {
+        abort_unless($request->user()->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'plan_id' => ['required', 'integer', 'exists:subscription_plans,id'],
+            'status' => ['nullable', 'in:active,trial,expired,suspended'],
+            'starts_at' => ['nullable', 'date'],
+            'expires_at' => ['nullable', 'date'],
+            'trial_ends_at' => ['nullable', 'date'],
+            'grace_ends_at' => ['nullable', 'date'],
+        ]);
+
+        $businessModel = Business::query()->findOrFail($business);
+        $plan = SubscriptionPlan::query()->findOrFail($data['plan_id']);
+
+        $subscription = Subscription::withoutGlobalScope('tenant-business')->updateOrCreate(
+            ['business_id' => $businessModel->id],
+            [
+                'plan_id' => $plan->id,
+                'status' => $data['status'] ?? 'active',
+                'starts_at' => $data['starts_at'] ?? now()->toDateString(),
+                'expires_at' => $data['expires_at'] ?? null,
+                'trial_ends_at' => $data['trial_ends_at'] ?? null,
+                'grace_ends_at' => $data['grace_ends_at'] ?? null,
+                'limits' => $plan->limits(),
+            ],
+        );
+
+        return ApiResponse::success(
+            Presenter::business($businessModel->fresh(), $subscription->fresh(['plan']), $businessModel->wallet),
+            'Subscription plan assigned.',
+        );
     }
 
     public function switchBranch(Request $request)
     {
         $data = $request->validate([
-            'branch_id' => ['required', 'integer'],
+            'branch_id' => ['nullable', 'integer'],
         ]);
 
         $user = $request->user();
+        $branchId = $data['branch_id'] ?? null;
 
-        $branch = Branch::query()->find($data['branch_id']);
+        if ($branchId !== null) {
+            $branch = Branch::query()->find($branchId);
 
-        if ($branch === null) {
-            throw new ApiException('BRANCH_NOT_FOUND', 'The selected branch could not be found.', 404);
+            if ($branch === null) {
+                throw new ApiException('BRANCH_NOT_FOUND', 'The selected branch could not be found.', 404);
+            }
+
+            if (! $user->hasBranchAccess($branch->id)) {
+                throw new ApiException('BRANCH_ACCESS', 'You do not have access to this branch.', 403);
+            }
         }
 
-        if (! $user->hasBranchAccess($branch->id)) {
-            throw new ApiException('BRANCH_ACCESS', 'You do not have access to this branch.', 403);
-        }
+        TenantContext::setBranchId($branchId);
 
-        TenantContext::setBranchId($branch->id);
-
-        return ApiResponse::success($this->context->context($branch->id), 'Branch switched.');
+        return ApiResponse::success(
+            $this->context->context($branchId, false),
+            $branchId === null ? 'Viewing all branches.' : 'Branch switched.',
+        );
     }
 
     private function perPage(Request $request): int
     {
         return min(max((int) $request->query('per_page', 20), 1), 100);
+    }
+
+    /**
+     * Attach subscription + wallet relations ignoring the tenant global scope so a
+     * Super Admin can see data for businesses other than their own. The default
+     * hasOne(...)->latestOfMany() relation embeds the tenant scope in its aggregate
+     * subquery, which cannot be removed via an eager-load closure.
+     */
+    private function hydrateSubscriptions(Collection $businesses): void
+    {
+        $ids = $businesses->pluck('id')->all();
+
+        if ($ids === []) {
+            return;
+        }
+
+        $subscriptions = Subscription::withoutGlobalScope('tenant-business')
+            ->with('plan')
+            ->whereIn('business_id', $ids)
+            ->orderByDesc('id')
+            ->get()
+            ->unique('business_id')
+            ->keyBy('business_id');
+
+        $wallets = Wallet::withoutGlobalScope('tenant-business')
+            ->whereIn('business_id', $ids)
+            ->get()
+            ->keyBy('business_id');
+
+        $businesses->each(function (Business $business) use ($subscriptions, $wallets) {
+            $business->setRelation('subscription', $subscriptions->get($business->id));
+            $business->setRelation('wallet', $wallets->get($business->id));
+        });
     }
 }

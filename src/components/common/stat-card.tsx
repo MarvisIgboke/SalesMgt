@@ -34,7 +34,7 @@ export function StatCard({
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
       <CardContent className="p-5">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          <p className="font-mono text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {label}
           </p>
           {icon && <span className="text-muted-foreground/70">{icon}</span>}

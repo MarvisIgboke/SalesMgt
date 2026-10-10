@@ -15,6 +15,7 @@ final class PermissionCatalog
             'sales.refund',
             'sales.discount',
             'sales.price_override',
+            'sales.credit',
         ],
         'Products' => [
             'products.view',
@@ -114,14 +115,14 @@ final class PermissionCatalog
     {
         return [
             'dashboard.view',
-            'sales.view', 'sales.create', 'sales.edit', 'sales.cancel', 'sales.discount',
-            'products.view', 'products.create', 'products.edit',
+            'sales.view', 'sales.create', 'sales.edit', 'sales.cancel', 'sales.discount', 'sales.credit',
+            'products.view', 'products.create', 'products.edit', 'products.delete',
             'customers.view', 'customers.create', 'customers.edit', 'customers.credit',
             'inventory.view', 'inventory.adjust',
             'finance.view',
             'expenses.create',
             'purchases.create', 'purchases.approve', 'purchases.receive',
-            'staff.view',
+            'staff.view', 'staff.create', 'staff.edit', 'staff.permissions',
             'shifts.view', 'shifts.operate', 'shifts.reconcile',
             'wallet.view', 'wallet.transactions',
             'subscription.view',

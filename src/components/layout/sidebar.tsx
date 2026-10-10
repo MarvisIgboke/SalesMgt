@@ -6,6 +6,8 @@ import {
 import { navSections, type NavItem } from '@/config/navigation'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
+import { usePermissions } from '@/lib/use-permissions'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Brand } from './brand'
@@ -63,8 +65,21 @@ export function Sidebar() {
     setMobileNavOpen,
   } = useAppStore()
   const badges = useNavBadges()
+  const isSuperAdmin = useAuthStore((s) => s.session?.user.roles.includes('Super Admin') ?? false)
+  const { canAny } = usePermissions()
 
   const collapsed = !sidebarOpen
+
+  const sections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) =>
+          (!item.superAdminOnly || isSuperAdmin) &&
+          (!item.permissions || canAny(...item.permissions)),
+      ),
+    }))
+    .filter((section) => section.items.length > 0)
 
   return (
     <>
@@ -97,7 +112,7 @@ export function Sidebar() {
         </div>
 
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-5 max-h-[calc(100vh-4rem)]">
-          {navSections.map((section) => (
+          {sections.map((section) => (
             <div key={section.id}>
               {!collapsed && (
                 <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">

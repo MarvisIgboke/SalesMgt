@@ -67,6 +67,11 @@ class InventoryService
     ): InventoryTransaction {
         return DB::transaction(function () use ($branchId, $productId, $variantId, $quantity, $type, $reason, $reference, $batchId, $userId) {
             $balance = $this->balance($branchId, $productId, $variantId, true);
+
+            if ($quantity < 0 && round((float) $balance->quantity + $quantity, 3) < -0.0001) {
+                throw new ApiException('insufficient_stock', 'Insufficient stock for this operation.', 422);
+            }
+
             $balance->quantity = round((float) $balance->quantity + $quantity, 3);
             $balance->save();
 

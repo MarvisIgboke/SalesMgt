@@ -60,6 +60,51 @@ class AuthController extends Controller
         );
     }
 
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:120'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'avatar_url' => ['nullable', 'string', 'max:2048'],
+            'current_password' => ['required_with:password', 'string'],
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        if (! empty($data['password'])) {
+            if (! Hash::check((string) $data['current_password'], $user->password)) {
+                throw new ApiException(
+                    'INVALID_PASSWORD',
+                    'Your current password is incorrect.',
+                    422,
+                    ['current_password' => ['Your current password is incorrect.']],
+                );
+            }
+
+            $user->password = $data['password'];
+        }
+
+        if (array_key_exists('name', $data)) {
+            $user->name = $data['name'];
+        }
+
+        if (array_key_exists('phone', $data)) {
+            $user->phone = $data['phone'];
+        }
+
+        if (array_key_exists('avatar_url', $data)) {
+            $user->avatar_url = $data['avatar_url'];
+        }
+
+        $user->save();
+
+        return ApiResponse::success(
+            $this->auth->sessionPayload($user->fresh(), (string) $request->bearerToken()),
+            'Profile updated.',
+        );
+    }
+
     public function logout(Request $request)
     {
         $user = $request->user();

@@ -44,11 +44,23 @@ export interface LoginInput {
   remember?: boolean
 }
 
+export interface ProfileInput {
+  name?: string
+  phone?: string | null
+  avatar_url?: string | null
+  current_password?: string
+  password?: string
+  password_confirmation?: string
+}
+
 export const authApi = {
   login: (input: LoginInput) =>
     http.post<ApiEnvelope<AuthSession>>('/auth/login', input),
 
   me: () => http.get<ApiEnvelope<AuthSession>>('/auth/me'),
+
+  updateProfile: (input: ProfileInput) =>
+    http.put<ApiEnvelope<AuthSession>>('/auth/profile', input),
 
   logout: () => http.post<ApiEnvelope<null>>('/auth/logout'),
 

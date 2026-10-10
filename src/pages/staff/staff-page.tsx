@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, ShieldPlus, UserPlus, Users } from 'lucide-react'
+import { Pencil, ShieldCheck, ShieldPlus, UserPlus, Users } from 'lucide-react'
 import {
   staffApi,
+  type PermissionItem,
   type Role,
   type StaffInput,
   type StaffMember,
@@ -49,6 +50,7 @@ export function StaffPage() {
   const [editing, setEditing] = useState<StaffMember | null>(null)
   const [memberOpen, setMemberOpen] = useState(false)
   const [roleOpen, setRoleOpen] = useState(false)
+  const [permMember, setPermMember] = useState<StaffMember | null>(null)
 
   const { data, isFetching, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['staff', { search, page }],
@@ -191,14 +193,24 @@ export function StaffPage() {
                         {formatRelative(member.last_active_at)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => openEdit(member)}
-                        >
-                          <span className="sr-only">Edit member</span>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => setPermMember(member)}
+                          >
+                            <span className="sr-only">Manage permissions</span>
+                            <ShieldCheck className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => openEdit(member)}
+                          >
+                            <span className="sr-only">Edit member</span>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -251,6 +263,10 @@ export function StaffPage() {
       )}
 
       {roleOpen && <RoleDialog onClose={() => setRoleOpen(false)} />}
+
+      {permMember && (
+        <MemberPermissionsDialog member={permMember} onClose={() => setPermMember(null)} />
+      )}
     </div>
   )
 }
@@ -554,6 +570,139 @@ function RoleDialog({ onClose }: { onClose: () => void }) {
             onClick={() => create.mutate()}
           >
             Create role
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function MemberPermissionsDialog({
+  member,
+  onClose,
+}: {
+  member: StaffMember
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [override, setOverride] = useState<string[] | null>(null)
+
+  const detail = useQuery({
+    queryKey: ['staff', member.id, 'permissions'],
+    queryFn: () => staffApi.staffPermissions(member.id),
+  })
+
+  const catalog = detail.data?.data.catalog ?? []
+  const roles = detail.data?.data.roles ?? []
+  const checked = override ?? detail.data?.data.permissions ?? []
+
+  const groups = catalog.reduce<Map<string, PermissionItem[]>>((acc, permission) => {
+    const list = acc.get(permission.group) ?? []
+    list.push(permission)
+    acc.set(permission.group, list)
+    return acc
+  }, new Map())
+
+  const save = useMutation({
+    mutationFn: () => staffApi.syncPermissions(member.id, checked),
+    onSuccess: () => {
+      toast.success('Permissions updated')
+      onClose()
+      void queryClient.invalidateQueries({ queryKey: ['staff'] })
+    },
+    onError: (err) => {
+      toast.error('Could not update permissions', {
+        description: err instanceof ApiError ? err.message : undefined,
+      })
+    },
+  })
+
+  const toggle = (value: string) => {
+    setOverride(
+      checked.includes(value)
+        ? checked.filter((item) => item !== value)
+        : [...checked, value],
+    )
+  }
+
+  const toggleGroup = (items: PermissionItem[], on: boolean) => {
+    const keys = items.map((item) => item.key)
+    setOverride(
+      on
+        ? Array.from(new Set([...checked, ...keys]))
+        : checked.filter((item) => !keys.includes(item)),
+    )
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Permissions · {member.name}</DialogTitle>
+          <DialogDescription>
+            Extra permissions granted directly to this member, on top of their roles
+            {roles.length > 0 ? ` (${roles.join(', ')})` : ''}.
+          </DialogDescription>
+        </DialogHeader>
+
+        {detail.isLoading && <LoadingState variant="cards" rows={4} />}
+        {detail.isError && (
+          <ErrorState error={detail.error} onRetry={() => detail.refetch()} />
+        )}
+
+        {!detail.isLoading && !detail.isError && (
+          <ScrollArea className="h-72 pr-4">
+            <div className="grid gap-4">
+              {Array.from(groups.entries()).map(([group, items]) => {
+                const allOn = items.every((item) => checked.includes(item.key))
+                return (
+                  <div key={group} className="grid gap-2">
+                    <label className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {group}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={allOn}
+                          onChange={() => toggleGroup(items, !allOn)}
+                        />
+                        All
+                      </span>
+                    </label>
+                    <div className="grid gap-2">
+                      {items.map((permission) => (
+                        <label
+                          key={permission.key}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked.includes(permission.key)}
+                            onChange={() => toggle(permission.key)}
+                          />
+                          {permission.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            loading={save.isPending}
+            disabled={detail.isLoading}
+            onClick={() => save.mutate()}
+          >
+            Save permissions
           </Button>
         </DialogFooter>
       </DialogContent>

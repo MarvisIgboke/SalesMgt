@@ -27,12 +27,16 @@ export interface StockDashboard {
 
 export interface StockMovement {
   id: number
+  product_id?: number
+  variant_id?: number | null
   product_name: string
   variant_name?: string | null
   type: 'in' | 'out' | 'adjustment' | 'transfer_in' | 'transfer_out' | 'damage' | 'expired'
   quantity: number
+  direction?: 'in' | 'out'
   reason?: string | null
   reference?: string | null
+  staff_name?: string | null
   happened_at: string
 }
 
@@ -70,6 +74,7 @@ export const inventoryApi = {
     search?: string
     branch_id?: number
     status?: string
+    product_id?: number
   }) => http.get<Paginated<StockLevel>>('/inventory/levels', { params }),
 
   movements: (params?: {
@@ -78,6 +83,7 @@ export const inventoryApi = {
     branch_id?: number
     type?: string
     product_id?: number
+    variant_id?: number
   }) => http.get<Paginated<StockMovement>>('/inventory/movements', { params }),
 
   adjust: (input: StockAdjustmentInput) =>

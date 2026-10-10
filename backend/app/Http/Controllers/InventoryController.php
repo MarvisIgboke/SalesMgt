@@ -81,7 +81,8 @@ class InventoryController extends Controller
             ->leftJoin('products', 'products.id', '=', 'inventory_balances.product_id')
             ->leftJoin('product_variants', 'product_variants.id', '=', 'inventory_balances.variant_id')
             ->with(['product', 'variant', 'branch'])
-            ->when($branchId !== null, fn ($q) => $q->where('inventory_balances.branch_id', $branchId));
+            ->when($branchId !== null, fn ($q) => $q->where('inventory_balances.branch_id', $branchId))
+            ->when($request->filled('product_id'), fn ($q) => $q->where('inventory_balances.product_id', (int) $request->query('product_id')));
 
         if ($request->filled('search')) {
             $term = '%'.$request->string('search').'%';
@@ -110,10 +111,11 @@ class InventoryController extends Controller
         $branchId = $this->branchId($request);
 
         $paginator = InventoryTransaction::query()
-            ->with(['product', 'variant'])
+            ->with(['product', 'variant', 'user'])
             ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->when($request->filled('type'), fn ($q) => $q->where('type', $request->query('type')))
             ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', (int) $request->query('product_id')))
+            ->when($request->filled('variant_id'), fn ($q) => $q->where('variant_id', (int) $request->query('variant_id')))
             ->orderByDesc('happened_at')
             ->orderByDesc('id')
             ->paginate($this->perPage($request));
@@ -306,7 +308,7 @@ class InventoryController extends Controller
         $branchId = $this->branchId($request);
 
         $paginator = InventoryTransaction::query()
-            ->with(['product', 'variant'])
+            ->with(['product', 'variant', 'user'])
             ->where('type', 'damage')
             ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->orderByDesc('happened_at')
@@ -408,12 +410,16 @@ class InventoryController extends Controller
     {
         return [
             'id' => $tx->id,
+            'product_id' => $tx->product_id,
+            'variant_id' => $tx->variant_id,
             'product_name' => $tx->product?->name,
             'variant_name' => $tx->variant?->name,
             'type' => $tx->type,
             'quantity' => (float) $tx->quantity,
+            'direction' => (float) $tx->quantity < 0 ? 'out' : 'in',
             'reason' => $tx->reason,
             'reference' => $tx->reference,
+            'staff_name' => $tx->user?->name,
             'happened_at' => $tx->happened_at?->toIso8601String(),
         ];
     }

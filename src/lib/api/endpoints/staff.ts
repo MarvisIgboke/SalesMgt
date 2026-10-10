@@ -49,6 +49,27 @@ export interface UserSession {
   last_active_at: string
 }
 
+export interface PermissionItem {
+  key: string
+  label: string
+  group: string
+}
+
+export interface StaffPermissionDetail {
+  user_id: number
+  name: string
+  roles: string[]
+  permissions: string[]
+  effective_permissions: string[]
+  catalog: PermissionItem[]
+}
+
+export interface SyncPermissionsResult {
+  user_id: number
+  permissions: string[]
+  effective_permissions: string[]
+}
+
 export const staffApi = {
   list: (params?: { page?: number; per_page?: number; search?: string }) =>
     http.get<Paginated<StaffMember>>('/staff', { params }),
@@ -64,6 +85,12 @@ export const staffApi = {
 
   permissions: () =>
     http.get<ApiEnvelope<Array<{ key: string; label: string; group: string }>>>('/staff/permissions'),
+
+  staffPermissions: (id: number) =>
+    http.get<ApiEnvelope<StaffPermissionDetail>>(`/staff/${id}/permissions`),
+
+  syncPermissions: (id: number, permissions: string[]) =>
+    http.put<ApiEnvelope<SyncPermissionsResult>>(`/staff/${id}/permissions`, { permissions }),
 
   createRole: (input: { name: string; description?: string; permissions: string[] }) =>
     http.post<ApiEnvelope<Role>>('/staff/roles', input),

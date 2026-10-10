@@ -67,6 +67,22 @@ function AdjustDialog({
 
   const products = (productsData?.data as Product[] | undefined) ?? []
 
+  const { data: stockData } = useQuery({
+    queryKey: ['inventory', 'product-stock', productId, branchIdState],
+    queryFn: () =>
+      inventoryApi.levels({
+        product_id: Number(productId),
+        branch_id: branchIdState ? Number(branchIdState) : undefined,
+        per_page: 100,
+      }),
+    enabled: open && !!productId && !!branchIdState,
+  })
+
+  const currentStock = ((stockData?.data as StockLevel[] | undefined) ?? []).reduce(
+    (sum, row) => sum + row.quantity,
+    0,
+  )
+
   const mutate = useMutation({
     mutationFn: (input: { product_id: number; branch_id: number; quantity: number; reason?: string }) =>
       inventoryApi.adjust({
@@ -135,6 +151,14 @@ function AdjustDialog({
               </SelectContent>
             </Select>
           </div>
+          {productId && branchIdState && (
+            <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Current stock</span>
+              <span className="font-semibold tabular-nums">
+                {stockData ? formatNumber(currentStock) : '…'}
+              </span>
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="quantity">Quantity (negative for out)</Label>
             <Input
@@ -414,6 +438,7 @@ export function InventoryPage() {
                     <TableHead>Quantity</TableHead>
                     <TableHead>Reason</TableHead>
                     <TableHead>Reference</TableHead>
+                    <TableHead>Staff</TableHead>
                     <TableHead>When</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -438,6 +463,7 @@ export function InventoryPage() {
                       </TableCell>
                       <TableCell>{row.reason || '—'}</TableCell>
                       <TableCell>{row.reference || '—'}</TableCell>
+                      <TableCell className="text-sm">{row.staff_name || '—'}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{formatDateTime(row.happened_at)}</TableCell>
                     </TableRow>
                   ))}

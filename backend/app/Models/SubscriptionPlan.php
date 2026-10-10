@@ -70,7 +70,10 @@ class SubscriptionPlan extends Model
             'quarterly_price' => $this->quarterly_price,
             'annual_price' => $this->annual_price,
             'currency' => $this->currency,
+            'grace_days' => $this->grace_days,
             'features' => $this->features ?? [],
+            'is_active' => $this->is_active,
+            'limits' => $this->limits(),
         ];
     }
 }

@@ -12,7 +12,7 @@ use App\Support\TenantContext;
 
 class BusinessContextService
 {
-    public function context(?int $branchId = null): array
+    public function context(?int $branchId = null, bool $fallback = true): array
     {
         $business = Business::query()
             ->with(['subscription.plan', 'wallet'])
@@ -27,7 +27,9 @@ class BusinessContextService
             $branch = Branch::query()->find($branchId);
         }
 
-        $branch ??= $business->branches()->where('is_active', true)->orderBy('id')->first();
+        if ($branch === null && $fallback) {
+            $branch = $business->branches()->where('is_active', true)->orderBy('id')->first();
+        }
 
         return [
             'business' => Presenter::business($business, $subscription, $wallet),
