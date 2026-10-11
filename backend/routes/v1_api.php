@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ExpiryController;
 use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\FinancialReportController;
 use App\Http\Controllers\AuditController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\NotificationController;
@@ -32,6 +33,7 @@ Route::get('/businesses', [BusinessController::class, 'listBusinesses']);
 Route::post('/businesses', [BusinessController::class, 'storeBusiness']);
 Route::post('/businesses/{business}/plan', [BusinessController::class, 'assignPlan'])->whereNumber('business');
 Route::post('/business/switch-branch', [BusinessController::class, 'switchBranch']);
+Route::get('/branches/summary', [BusinessController::class, 'branchesSummary']);
 Route::get('/branches', [BusinessController::class, 'branches']);
 Route::post('/branches', [BusinessController::class, 'storeBranch']);
 Route::put('/branches/{branch}', [BusinessController::class, 'updateBranch'])->whereNumber('branch');
@@ -50,6 +52,7 @@ Route::delete('/subscription/plans/{plan}', [SubscriptionController::class, 'des
 Route::get('/dashboard', [DashboardController::class, 'show']);
 
 // Catalog lookups.
+Route::get('/catalog/overview', [CatalogController::class, 'overview']);
 Route::get('/product-categories', [CatalogController::class, 'categories']);
 Route::post('/product-categories', [CatalogController::class, 'storeCategory']);
 Route::put('/product-categories/{category}', [CatalogController::class, 'updateCategory'])->whereNumber('category');
@@ -70,6 +73,7 @@ Route::delete('/products/{product}/barcodes/{barcode}', [ProductController::clas
 
 // Staff.
 Route::get('/staff', [StaffController::class, 'index']);
+Route::get('/staff/summary', [StaffController::class, 'summary']);
 Route::post('/staff', [StaffController::class, 'store'])->middleware('idempotent');
 Route::get('/staff/roles', [StaffController::class, 'roles']);
 Route::post('/staff/roles', [StaffController::class, 'createRole']);
@@ -84,6 +88,7 @@ Route::put('/staff/{staff}/permissions', [StaffController::class, 'syncPermissio
 
 // Customers & credit ledger.
 Route::get('/customers', [CustomerController::class, 'index']);
+Route::get('/customers/summary', [CustomerController::class, 'summary']);
 Route::post('/customers', [CustomerController::class, 'store'])->middleware('idempotent');
 Route::get('/customers/{customer}/statement', [CustomerController::class, 'statement'])->whereNumber('customer');
 Route::get('/customers/{customer}/purchases', [CustomerController::class, 'purchases'])->whereNumber('customer');
@@ -94,6 +99,7 @@ Route::post('/customer-payments', [CustomerPaymentController::class, 'store'])->
 
 // Suppliers.
 Route::get('/suppliers', [SupplierController::class, 'index']);
+Route::get('/suppliers/summary', [SupplierController::class, 'summary']);
 Route::post('/suppliers', [SupplierController::class, 'store'])->middleware('idempotent');
 Route::get('/suppliers/{supplier}/purchases', [SupplierController::class, 'purchases'])->whereNumber('supplier');
 Route::get('/suppliers/{supplier}/payments', [SupplierController::class, 'payments'])->whereNumber('supplier');
@@ -116,11 +122,14 @@ Route::get('/shifts/current', [ShiftController::class, 'current']);
 Route::post('/shifts/open', [ShiftController::class, 'open'])->middleware('idempotent');
 Route::post('/shifts/close', [ShiftController::class, 'close'])->middleware('idempotent');
 Route::post('/shifts/reconcile', [ShiftController::class, 'reconcile']);
+Route::get('/shifts/{shift}', [ShiftController::class, 'show'])->whereNumber('shift');
+Route::post('/shifts/{shift}/movements', [ShiftController::class, 'storeMovement'])->middleware('idempotent')->whereNumber('shift');
 
 // Inventory.
 Route::get('/inventory/dashboard', [InventoryController::class, 'dashboard']);
 Route::get('/inventory/levels', [InventoryController::class, 'levels']);
 Route::get('/inventory/movements', [InventoryController::class, 'movements']);
+Route::get('/inventory/trace/{product}', [InventoryController::class, 'trace'])->whereNumber('product');
 Route::post('/inventory/adjustments', [InventoryController::class, 'adjust'])->middleware('idempotent');
 Route::get('/inventory/transfers', [InventoryController::class, 'transfers']);
 Route::post('/inventory/transfers', [InventoryController::class, 'transfer'])->middleware('idempotent');
@@ -128,6 +137,7 @@ Route::get('/inventory/goods-received', [InventoryController::class, 'goodsRecei
 Route::post('/inventory/goods-received', [InventoryController::class, 'goodsReceived'])->middleware('idempotent');
 Route::get('/inventory/damaged', [InventoryController::class, 'damaged']);
 Route::get('/inventory/expired', [InventoryController::class, 'expired']);
+Route::get('/inventory/batches', [InventoryController::class, 'batches']);
 Route::get('/inventory/approvals', [InventoryController::class, 'approvals']);
 Route::post('/inventory/approvals/{adjustment}', [InventoryController::class, 'approve'])->whereNumber('adjustment');
 
@@ -157,6 +167,7 @@ Route::post('/sales/{sale}/cancel', [SalesController::class, 'cancel'])->whereNu
 Route::post('/sales/{sale}/refund', [SalesController::class, 'refund'])->whereNumber('sale')->middleware('idempotent');
 
 // Purchasing.
+Route::get('/purchasing/summary', [PurchasingController::class, 'summary']);
 Route::get('/purchasing/requisitions', [PurchasingController::class, 'requisitions']);
 Route::post('/purchasing/requisitions', [PurchasingController::class, 'createRequisition'])->middleware('idempotent');
 Route::get('/purchasing/orders', [PurchasingController::class, 'orders']);
@@ -176,11 +187,13 @@ Route::get('/finance/payables-summary', [FinanceController::class, 'payables']);
 
 // Reports.
 Route::get('/reports', [ReportController::class, 'show']);
+Route::get('/reports/financial', [FinancialReportController::class, 'summary']);
 Route::get('/reports/export/{format}', [ReportController::class, 'export']);
 Route::get('/reports/download/{file}', [ReportController::class, 'download'])->where('file', '[A-Za-z0-9_.-]+');
 
 // Notifications.
 Route::get('/notifications', [NotificationController::class, 'index']);
+Route::get('/notifications/summary', [NotificationController::class, 'summary']);
 Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
 Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
 Route::post('/notifications/subscribe', [NotificationController::class, 'subscribe']);

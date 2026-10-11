@@ -80,13 +80,99 @@ class PurchasingController extends Controller
         $this->authorize($request, ['purchases.create', 'purchases.approve', 'purchases.receive']);
 
         $paginator = PurchaseOrder::query()
-            ->with(['supplier', 'branch', 'creator'])
+            ->with(['supplier', 'branch', 'creator', 'items.product'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')))
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', (int) $request->query('supplier_id')))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = '%'.$request->string('search').'%';
+                $q->where(fn ($sub) => $sub
+                    ->where('reference', 'like', $term)
+                    ->orWhere('notes', 'like', $term)
+                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', $term))
+                    ->orWhereHas('items.product', fn ($p) => $p->where('name', 'like', $term)->orWhere('sku', 'like', $term)));
+            })
             ->orderByDesc('id')
             ->paginate($this->perPage($request));
 
         return ApiResponse::paginator($paginator, map: fn (PurchaseOrder $order) => $this->presentOrder($order));
+    }
+
+    public function summary(Request $request)
+    {
+        $this->authorize($request, ['purchases.create', 'purchases.approve', 'purchases.receive']);
+
+        $businessId = TenantContext::businessId();
+
+        $orders = PurchaseOrder::query()
+            ->selectRaw('status, COUNT(*) as aggregate_count, COALESCE(SUM(total), 0) as aggregate_value')
+            ->groupBy('status')
+            ->get();
+
+        $statusCounts = ['all' => 0, 'draft' => 0, 'pending' => 0, 'approved' => 0, 'received' => 0, 'cancelled' => 0];
+        $statusValues = $statusCounts;
+
+        foreach ($orders as $row) {
+            $status = (string) $row->status;
+            $count = (int) $row->aggregate_count;
+            $value = (float) $row->aggregate_value;
+
+            if (array_key_exists($status, $statusCounts)) {
+                $statusCounts[$status] = $count;
+                $statusValues[$status] = $value;
+            }
+
+            $statusCounts['all'] += $count;
+        }
+
+        $kpi = fn (string $status): array => [
+            'count' => (int) ($statusCounts[$status] ?? 0),
+            'value' => round((float) ($statusValues[$status] ?? 0), 2),
+        ];
+
+        $openCount = $statusCounts['draft'] + $statusCounts['pending'] + $statusCounts['approved'];
+        $openValue = round($statusValues['draft'] + $statusValues['pending'] + $statusValues['approved'], 2);
+
+        $monthStart = Carbon::now()->startOfMonth();
+
+        $receivedThisMonth = PurchaseOrder::query()
+            ->where('status', 'received')
+            ->where('updated_at', '>=', $monthStart)
+            ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(total), 0) as aggregate_value')
+            ->first();
+
+        $mtdOrders = PurchaseOrder::query()
+            ->where('created_at', '>=', $monthStart)
+            ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(total), 0) as aggregate_value')
+            ->first();
+
+        $payables = SupplierInvoice::query()
+            ->where('status', '!=', 'paid')
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', '<=', Carbon::now()->addDays(14)->toDateString())
+            ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(amount), 0) as aggregate_value')
+            ->first();
+
+        return ApiResponse::success([
+            'kpis' => [
+                'open_pos' => ['count' => $openCount, 'value' => $openValue],
+                'inbound' => $kpi('approved'),
+                'grn_dock' => [
+                    'count' => (int) ($receivedThisMonth->aggregate_count ?? 0),
+                    'value' => round((float) ($receivedThisMonth->aggregate_value ?? 0), 2),
+                ],
+                'payables_14d' => [
+                    'count' => (int) ($payables->aggregate_count ?? 0),
+                    'value' => round((float) ($payables->aggregate_value ?? 0), 2),
+                ],
+            ],
+            'status_counts' => $statusCounts,
+            'spend' => [
+                'mtd' => round((float) ($mtdOrders->aggregate_value ?? 0), 2),
+                'mtd_orders' => (int) ($mtdOrders->aggregate_count ?? 0),
+                'open_commitment' => $openValue,
+            ],
+            'business_id' => $businessId,
+        ]);
     }
 
     public function createOrder(Request $request)
@@ -156,7 +242,7 @@ class PurchasingController extends Controller
             'total' => (float) $order->total,
         ]);
 
-        return ApiResponse::success($this->presentOrder($order->fresh(['supplier', 'branch', 'creator'])), 'Purchase order created.');
+        return ApiResponse::success($this->presentOrder($order->fresh(['supplier', 'branch', 'creator', 'items.product'])), 'Purchase order created.');
     }
 
     public function order(Request $request, int $order)
@@ -198,7 +284,7 @@ class PurchasingController extends Controller
             'to' => $data['status'],
         ]);
 
-        return ApiResponse::success($this->presentOrder($record->fresh(['supplier', 'branch', 'creator'])), 'Order updated.');
+        return ApiResponse::success($this->presentOrder($record->fresh(['supplier', 'branch', 'creator', 'items.product'])), 'Order updated.');
     }
 
     public function invoices(Request $request)
@@ -344,6 +430,15 @@ class PurchasingController extends Controller
                 'unit_cost' => (float) $item->unit_cost,
                 'line_total' => round((float) $item->quantity * (float) $item->unit_cost, 2),
             ])->values()->all();
+        } else {
+            $items = $order->relationLoaded('items') ? $order->items : collect();
+            $payload['items_count'] = $items->count();
+            $payload['units'] = round((float) $items->sum('quantity'), 3);
+            $payload['item_preview'] = $items->take(3)
+                ->map(fn (PurchaseItem $item) => $item->product?->name)
+                ->filter()
+                ->values()
+                ->all();
         }
 
         return $payload;
@@ -365,3 +460,4 @@ class PurchasingController extends Controller
         return min(max((int) $request->query('per_page', 20), 1), 100);
     }
 }
+

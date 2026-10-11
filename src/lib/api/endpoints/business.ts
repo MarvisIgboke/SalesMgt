@@ -17,6 +17,7 @@ export interface Business {
 
 export interface Branch {
   id: number
+  business_id?: number
   name: string
   code?: string
   address?: string | null
@@ -26,6 +27,45 @@ export interface Branch {
   defaults?: {
     currency?: string
   }
+  manager?: string | null
+  today_sales?: number
+  today_orders?: number
+  stock_value?: number
+  stock_skus?: number
+  open_tills?: number
+  variance?: number
+}
+
+export interface BranchTypeCount {
+  type: string
+  count: number
+}
+
+export interface BranchSummary {
+  business_id: number
+  currency: string
+  nodes: {
+    total: number
+    active: number
+    inactive: number
+    by_type: BranchTypeCount[]
+  }
+  gmv_24h: {
+    value: number
+    orders: number
+    average: number
+  }
+  registers: {
+    open: number
+    variance: number
+    branches: number
+  }
+  inventory: {
+    value: number
+    skus: number
+    in_stock_pct: number
+  }
+  branches: Branch[]
 }
 
 export interface ActiveContext {
@@ -38,8 +78,11 @@ export interface ActiveContext {
 export const businessApi = {
   getContext: () => http.get<ApiEnvelope<ActiveContext>>('/business/context'),
 
-  listBranches: (params?: { page?: number; per_page?: number }) =>
+  listBranches: (params?: { page?: number; per_page?: number; business_id?: number }) =>
     http.get<Paginated<Branch>>('/branches', { params }),
+
+  branchSummary: (params?: { business_id?: number }) =>
+    http.get<ApiEnvelope<BranchSummary>>('/branches/summary', { params }),
 
   listBusinesses: () => http.get<ApiEnvelope<Business[]>>('/businesses'),
 
@@ -70,6 +113,7 @@ export const businessApi = {
     http.post<ApiEnvelope<ActiveContext>>('/business/switch-branch', { branch_id: branchId }),
 
   createBranch: (input: {
+    business_id?: number
     name: string
     code?: string
     address?: string

@@ -1,29 +1,41 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   Banknote,
+  Cpu,
+  Download,
   FileText,
-  Loader2,
+  Gauge,
+  Link2,
   MoreHorizontal,
   Pencil,
-  UserPlus,
+  Plus,
+  Repeat,
+  RefreshCw,
+  ScanLine,
+  Search,
+  TrendingUp,
   Users,
+  Wallet,
 } from 'lucide-react'
-import { customersApi, type Customer, type CustomerInput } from '@/lib/api/endpoints/customers'
+import {
+  customersApi,
+  type CustomerCard,
+  type CustomerInput,
+  type CustomerSummary,
+} from '@/lib/api/endpoints/customers'
 import { PageHeader } from '@/components/common/page-header'
-import { SearchInput } from '@/components/common/search-input'
-import { Pagination } from '@/components/common/pagination'
-import { LoadingState } from '@/components/common/loading-state'
 import { ErrorState } from '@/components/common/error-state'
 import { EmptyState } from '@/components/common/empty-state'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { LoadingState } from '@/components/common/loading-state'
+import { ScannerDialog } from '@/features/pos/scanner-dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
@@ -32,10 +44,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,9 +52,782 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { formatCurrency, formatDate, formatNumber, initials } from '@/lib/utils'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { usePermissions } from '@/lib/use-permissions'
+import { useAuthStore } from '@/stores/auth'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
+import { cn, formatCurrency, formatDate, formatNumber, formatRelative, initials } from '@/lib/utils'
+
+const ALL = 'all'
+const WHOLESALE = 'wholesale'
+const VIP = 'vip'
+const CREDIT_DUE = 'credit_due'
+const WALKIN = 'walkin'
+const CREDIT_DUE_THRESHOLD = 500_000
+
+interface FilterOption {
+  key: string
+  label: string
+  count: number
+  tone?: 'warning'
+}
+
+function buildFilters(summary: CustomerSummary | undefined): FilterOption[] {
+  if (!summary) return []
+  return [
+    { key: ALL, label: 'All Customers', count: summary.filters.all },
+    { key: WHOLESALE, label: 'Wholesale B2B', count: summary.filters.wholesale },
+    { key: VIP, label: 'Retail VIP', count: summary.filters.vip },
+    {
+      key: CREDIT_DUE,
+      label: `Credit Due > ${formatCurrencyCompact(CREDIT_DUE_THRESHOLD)}`,
+      count: summary.filters.credit_due,
+      tone: 'warning',
+    },
+    { key: WALKIN, label: 'Walk-in Registered', count: summary.filters.walkin },
+  ]
+}
+
+function formatCurrencyCompact(value: number): string {
+  if (value >= 1_000_000) return `₦${value / 1_000_000}m`
+  if (value >= 1_000) return `₦${value / 1_000}k`
+  return `₦${value}`
+}
+
+function matchesFilter(card: CustomerCard, filter: string): boolean {
+  if (filter === WHOLESALE) return card.segment === 'Wholesale B2B'
+  if (filter === VIP) return card.segment === 'Retail VIP'
+  if (filter === CREDIT_DUE) return card.outstanding_balance > CREDIT_DUE_THRESHOLD
+  if (filter === WALKIN) return card.is_walkin
+  return true
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function metricGlyph(kind: 'profiles' | 'ar' | 'retention' | 'gmv', className: string) {
+  if (kind === 'profiles') return <Users className={className} />
+  if (kind === 'ar') return <Wallet className={className} />
+  if (kind === 'retention') return <Repeat className={className} />
+  return <TrendingUp className={className} />
+}
+
+export function CustomersPage() {
+  const queryClient = useQueryClient()
+  const { can } = usePermissions()
+  const isSuperAdmin = useAuthStore((s) => s.session?.user.roles.includes('Super Admin') ?? false)
+  const canCreate = can('customers.create') || isSuperAdmin
+  const canEdit = can('customers.edit') || isSuperAdmin
+  const canCredit = can('customers.credit') || isSuperAdmin
+
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState(ALL)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<CustomerCard | null>(null)
+  const [paying, setPaying] = useState<CustomerCard | null>(null)
+  const [viewing, setViewing] = useState<CustomerCard | null>(null)
+
+  const summaryQuery = useQuery({
+    queryKey: ['customers', 'summary'],
+    queryFn: () => customersApi.summary(),
+    refetchInterval: 30_000,
+  })
+
+  const summary = summaryQuery.data?.data
+  const cards = summary?.customers ?? []
+
+  const term = search.trim().toLowerCase()
+  const visible = cards.filter((card) => {
+    if (!matchesFilter(card, filter)) return false
+    if (!term) return true
+    return [card.name, card.account_code, card.tier, card.segment, card.phone ?? '', card.email ?? '', card.address ?? '']
+      .some((value) => value.toLowerCase().includes(term))
+  })
+
+  const filters = buildFilters(summary)
+
+  const reload = () => {
+    void queryClient.invalidateQueries({ queryKey: ['customers'] })
+  }
+
+  const openCreate = () => {
+    setEditing(null)
+    setEditorOpen(true)
+  }
+
+  const openEdit = (card: CustomerCard) => {
+    setEditing(card)
+    setEditorOpen(true)
+  }
+
+  const exportAgeing = () => {
+    if (cards.length === 0) {
+      toast.info('Nothing to export yet')
+      return
+    }
+    const rows: string[][] = [
+      ['Account', 'Customer', 'Segment', 'Tier', 'Credit Limit', 'Outstanding', 'Utilisation %', 'Over Limit', 'Last Purchase'],
+      ...cards.map((card) => [
+        card.account_code,
+        card.name,
+        card.segment,
+        card.tier,
+        String(card.credit_limit ?? 0),
+        String(card.outstanding_balance),
+        String(card.utilisation_pct),
+        card.over_limit ? 'Yes' : 'No',
+        card.last_purchase_at ?? '—',
+      ]),
+    ]
+    downloadCsv('ar-ageing.csv', rows)
+    toast.success('AR ageing report exported')
+  }
+
+  const syncErp = () => {
+    void summaryQuery.refetch()
+    toast.info('Syncing CRM ledger with ERP…')
+  }
+
+  return (
+    <div className="animate-fade-in space-y-3 pb-24">
+      <TelemetryBar
+        profiles={summary?.profiles.total}
+        outstanding={summary?.ar.total}
+        syncing={summaryQuery.isFetching}
+        onSync={() => void summaryQuery.refetch()}
+      />
+
+      <PageHeader
+        eyebrow="Customer CRM & Accounts"
+        title="Customers"
+        description="Omnichannel profiles, credit facilities, AR ledger and lifetime value."
+      />
+
+      <MetricGrid summary={summary} loading={summaryQuery.isLoading} errored={summaryQuery.isError} />
+
+      <ActionBar
+        canCreate={canCreate}
+        onCreate={openCreate}
+        onStatements={() => toast.info('Open a customer card to view its AR statement.')}
+        onGiftCard={() => toast.info('Gift cards are not enabled for this business yet.')}
+      />
+
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search name, account, phone or tier…"
+            className="h-11 rounded-xl pl-10 pr-10"
+          />
+        </div>
+        <Button
+          variant="secondary"
+          size="icon"
+          aria-label="Scan customer QR to open profile"
+          onClick={() => setScannerOpen(true)}
+        >
+          <ScanLine className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <FilterPills options={filters} active={filter} onSelect={setFilter} />
+
+      <div className="flex items-center justify-between px-0.5">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Customer Accounts
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {formatNumber(visible.length)} of {formatNumber(summary?.profiles.total ?? 0)} profiles
+        </span>
+      </div>
+
+      {summaryQuery.isLoading && <RosterSkeleton />}
+
+      {!summaryQuery.isLoading && summaryQuery.isError && (
+        <ErrorState error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} />
+      )}
+
+      {!summaryQuery.isLoading && !summaryQuery.isError && visible.length === 0 && (
+        <EmptyState
+          title="No customers found"
+          description={
+            search || filter !== ALL
+              ? 'Try a different search or filter.'
+              : 'Add your first customer account to start tracking credit and lifetime value.'
+          }
+          icon={<Users className="h-6 w-6" />}
+          action={
+            canCreate ? (
+              <Button variant="outline" size="sm" onClick={openCreate}>
+                New customer
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+
+      {!summaryQuery.isLoading && !summaryQuery.isError && visible.length > 0 && (
+        <div className="space-y-2.5">
+          {visible.map((card) => (
+            <CustomerAccountCard
+              key={card.id}
+              card={card}
+              canEdit={canEdit}
+              canCredit={canCredit}
+              onStatement={() => setViewing(card)}
+              onPayment={() => setPaying(card)}
+              onEdit={() => openEdit(card)}
+            />
+          ))}
+        </div>
+      )}
+
+      {summary && <ArPipelineFooter summary={summary} onExport={exportAgeing} onSync={syncErp} />}
+
+      {editorOpen && (
+        <CustomerEditor
+          customer={editing}
+          onClose={() => setEditorOpen(false)}
+          onSaved={reload}
+        />
+      )}
+
+      {viewing && <StatementDialog card={viewing} onClose={() => setViewing(null)} />}
+
+      {paying && <PaymentDialog card={paying} onClose={() => setPaying(null)} onSaved={reload} />}
+
+      <ScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onBarcode={(value) => {
+          setScannerOpen(false)
+          setSearch(value)
+          toast.info(`Searching "${value}"`)
+        }}
+      />
+    </div>
+  )
+}
+
+function TelemetryBar({
+  profiles,
+  outstanding,
+  syncing,
+  onSync,
+}: {
+  profiles?: number
+  outstanding?: number
+  syncing: boolean
+  onSync: () => void
+}) {
+  return (
+    <div className="space-y-2 rounded-xl border border-border bg-surface-sunken p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+          </span>
+          <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-wider text-secondary">
+            Customer CRM &amp; Accounts
+          </span>
+          <span className="hidden text-muted-foreground sm:inline">•</span>
+          <span className="hidden truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:inline">
+            Omnichannel • AR Ledger
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden items-center gap-1 rounded bg-surface-elevated px-2 py-0.5 text-muted-foreground sm:flex">
+            <Cpu className="h-3 w-3 text-primary" />
+            <span className="font-mono text-[10px]">ERP LINKED</span>
+          </span>
+          <Button variant="ghost" size="icon-sm" aria-label="Refresh" onClick={onSync} disabled={syncing}>
+            <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
+          </Button>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-2.5 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Link2 className="h-4 w-4 shrink-0 text-primary" />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Ledger:</span>
+          <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">
+            {formatNumber(profiles ?? 0)} profiles • {formatCurrency(outstanding ?? 0)} AR outstanding
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MetricGrid({
+  summary,
+  loading,
+  errored,
+}: {
+  summary?: CustomerSummary
+  loading: boolean
+  errored: boolean
+}) {
+  const dim = loading ? '—' : errored ? 'n/a' : undefined
+  const mom = summary?.gmv_30d.mom_pct ?? 0
+  const momUp = mom >= 0
+
+  const cards: {
+    kind: 'profiles' | 'ar' | 'retention' | 'gmv'
+    label: string
+    value: string
+    sub: string
+    subTone: string
+    iconTone: string
+    footer: [string, string]
+  }[] = [
+    {
+      kind: 'profiles',
+      label: 'Active Profiles',
+      value: dim ?? formatNumber(summary?.profiles.total ?? 0),
+      sub: dim ?? `+${formatNumber(summary?.profiles.new_this_week ?? 0)} this week`,
+      subTone: 'text-success',
+      iconTone: 'bg-success/15 text-success',
+      footer: [
+        `${formatNumber(summary?.profiles.wholesale ?? 0)} wholesale`,
+        `${formatNumber(summary?.profiles.vip ?? 0)} VIP`,
+      ],
+    },
+    {
+      kind: 'ar',
+      label: 'AR Ledger Bal.',
+      value: dim ?? formatCurrency(summary?.ar.total ?? 0),
+      sub: dim ?? `${formatNumber(summary?.ar.accounts ?? 0)} accounts carrying`,
+      subTone: 'text-warning',
+      iconTone: 'bg-tertiary/15 text-tertiary',
+      footer: [
+        `Health ${summary?.ar.book_health_pct ?? 0}%`,
+        `${formatNumber(summary?.ar.due_high ?? 0)} due > ${formatCurrencyCompact(CREDIT_DUE_THRESHOLD)}`,
+      ],
+    },
+    {
+      kind: 'retention',
+      label: 'Repeat Buyers',
+      value: dim ?? formatNumber(summary?.loyalty.repeat_buyers ?? 0),
+      sub: dim ?? `${summary?.loyalty.retention_pct ?? 0}% retention`,
+      subTone: 'text-primary',
+      iconTone: 'bg-info/15 text-info',
+      footer: [
+        `${formatNumber(summary?.loyalty.lifetime_orders ?? 0)} orders`,
+        'Loyalty fabric',
+      ],
+    },
+    {
+      kind: 'gmv',
+      label: '30D LTV / GMV',
+      value: dim ?? formatCurrency(summary?.gmv_30d.value ?? 0),
+      sub: dim ?? `${momUp ? '+' : ''}${mom}% MoM`,
+      subTone: momUp ? 'text-success' : 'text-destructive',
+      iconTone: 'bg-primary/10 text-primary',
+      footer: [
+        `${formatNumber(summary?.gmv_30d.orders ?? 0)} orders`,
+        `Avg ${formatCurrency(summary?.gmv_30d.average ?? 0)}`,
+      ],
+    },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      {cards.map((card) => (
+        <div
+          key={card.kind}
+          className="relative overflow-hidden rounded-2xl border border-border bg-surface-elevated p-3.5"
+        >
+          <div
+            className={cn(
+              'pointer-events-none absolute -bottom-4 -right-4 h-16 w-16 rounded-full blur-lg',
+              card.iconTone,
+            )}
+          />
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {card.label}
+            </span>
+            <span className={cn('grid h-6 w-6 place-items-center rounded', card.iconTone)}>
+              {metricGlyph(card.kind, 'h-3.5 w-3.5')}
+            </span>
+          </div>
+          <div className="mt-1.5 font-mono text-base font-bold tracking-tight text-foreground">
+            {card.value}
+          </div>
+          <div className="mt-1 flex items-center gap-1 font-mono text-[10px]">
+            <span className={cn('h-1.5 w-1.5 rounded-full', loading ? 'bg-muted' : 'bg-primary')} />
+            <span className={cn('truncate', card.subTone)}>{card.sub}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-1.5 font-mono text-[10px] text-muted-foreground">
+            <span className="truncate">{card.footer[0]}</span>
+            <span className="truncate">{card.footer[1]}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ActionBar({
+  canCreate,
+  onCreate,
+  onStatements,
+  onGiftCard,
+}: {
+  canCreate: boolean
+  onCreate: () => void
+  onStatements: () => void
+  onGiftCard: () => void
+}) {
+  return (
+    <div className="space-y-2">
+      {canCreate && (
+        <button
+          type="button"
+          onClick={onCreate}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" />
+          New Customer Account
+        </button>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onStatements}
+          className="flex items-center justify-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 py-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-surface-sunken"
+        >
+          <FileText className="h-4 w-4 text-primary" />
+          AR Statements
+        </button>
+        <button
+          type="button"
+          onClick={onGiftCard}
+          className="flex items-center justify-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 py-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-surface-sunken"
+        >
+          <Wallet className="h-4 w-4 text-secondary" />
+          Issue Gift Card
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function FilterPills({
+  options,
+  active,
+  onSelect,
+}: {
+  options: FilterOption[]
+  active: string
+  onSelect: (key: string) => void
+}) {
+  return (
+    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {options.map((option) => {
+        const selected = active === option.key
+        return (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => onSelect(option.key)}
+            className={cn(
+              'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide transition-colors',
+              selected
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border bg-surface-elevated text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {option.tone === 'warning' && <span className="h-1.5 w-1.5 rounded-full bg-warning" />}
+            {option.label}
+            <span
+              className={cn(
+                'rounded-full px-1.5 text-[10px]',
+                selected ? 'bg-primary/15' : 'bg-surface-sunken',
+              )}
+            >
+              {option.count}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function CustomerAccountCard({
+  card,
+  canEdit,
+  canCredit,
+  onStatement,
+  onPayment,
+  onEdit,
+}: {
+  card: CustomerCard
+  canEdit: boolean
+  canCredit: boolean
+  onStatement: () => void
+  onPayment: () => void
+  onEdit: () => void
+}) {
+  const stripe = card.over_limit
+    ? 'bg-destructive'
+    : card.segment === 'Wholesale B2B'
+      ? 'bg-primary'
+      : card.segment === 'Retail VIP'
+        ? 'bg-warning'
+        : 'bg-muted-foreground'
+
+  const tierVariant = card.over_limit
+    ? 'destructive'
+    : card.segment === 'Retail VIP'
+      ? 'warning'
+      : card.segment === 'Wholesale B2B'
+        ? 'info'
+        : 'muted'
+
+  const barTone = card.over_limit
+    ? 'bg-destructive'
+    : card.utilisation_pct >= 80
+      ? 'bg-warning'
+      : 'bg-primary'
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-surface-elevated">
+      <span className={cn('absolute inset-x-0 top-0 h-1', stripe)} aria-hidden />
+
+      <div className="p-3.5 pt-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-start gap-3">
+            <Avatar className="h-10 w-10 shrink-0">
+              <AvatarFallback>{initials(card.name)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <h2 className="truncate font-semibold tracking-tight text-foreground">{card.name}</h2>
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                <span className="rounded bg-surface-container px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">
+                  {card.account_code}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {card.segment}
+                </span>
+                <Badge variant={tierVariant} className="px-1.5 py-0 text-[10px]">
+                  {card.tier}
+                </Badge>
+              </div>
+            </div>
+          </div>
+          {(canEdit || canCredit) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Customer actions">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onStatement}>
+                  <FileText className="h-4 w-4" />
+                  Statement
+                </DropdownMenuItem>
+                {canCredit && (
+                  <DropdownMenuItem onClick={onPayment}>
+                    <Banknote className="h-4 w-4" />
+                    Record payment
+                  </DropdownMenuItem>
+                )}
+                {canEdit && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onEdit}>
+                      <Pencil className="h-4 w-4" />
+                      Edit customer
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="truncate">{card.phone ?? card.email ?? 'No contact on file'}</span>
+          {card.is_walkin && <span className="rounded bg-surface-sunken px-1.5 py-0.5 text-[9px]">Walk-in</span>}
+          {card.over_limit && (
+            <span className="flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-[9px] text-destructive">
+              <AlertTriangle className="h-2.5 w-2.5" />
+              Over limit
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 rounded-lg bg-surface-sunken p-2.5">
+          {card.credit_limit != null ? (
+            <>
+              <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-wider">
+                <span className="text-muted-foreground">
+                  Terms · {formatCurrency(card.credit_limit)} limit
+                </span>
+                <span className={cn('font-semibold', card.over_limit ? 'text-destructive' : 'text-foreground')}>
+                  {card.utilisation_pct}% used
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-container">
+                <div
+                  className={cn('h-full rounded-full', barTone)}
+                  style={{ width: `${Math.min(card.utilisation_pct, 100)}%` }}
+                />
+              </div>
+              <div className="mt-1.5 flex items-center justify-between font-mono text-[10px] text-muted-foreground">
+                <span>
+                  Owes <span className="font-semibold text-foreground">{formatCurrency(card.outstanding_balance)}</span>
+                </span>
+                <span>Available {formatCurrency(Math.max(card.credit_remaining ?? 0, 0))}</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span>No credit facility · cash &amp; card only</span>
+              <span>
+                Spent <span className="font-semibold text-foreground">{formatCurrency(card.outstanding_balance)}</span>
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="min-w-0">
+            <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Lifetime</p>
+            <p className="truncate font-mono text-xs font-semibold text-foreground">
+              {formatCurrency(card.lifetime_spend)}
+            </p>
+            <p className="font-mono text-[10px] text-muted-foreground">{formatNumber(card.orders_total)} orders</p>
+          </div>
+          <div className="min-w-0 border-l border-border/60 pl-2">
+            <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">30D Volume</p>
+            <p className="truncate font-mono text-xs font-semibold text-foreground">
+              {formatCurrency(card.spend_30d)}
+            </p>
+            <p className="font-mono text-[10px] text-muted-foreground">{formatNumber(card.orders_30d)} orders</p>
+          </div>
+          <div className="min-w-0 border-l border-border/60 pl-2">
+            <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Region</p>
+            <p className="truncate font-mono text-xs font-semibold text-foreground">
+              {card.address ? card.address.split(',')[0] : '—'}
+            </p>
+            <p className="font-mono text-[10px] text-muted-foreground">
+              {card.last_purchase_at ? `Last ${formatRelative(card.last_purchase_at)}` : 'No purchases'}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Member since {card.created_at ? formatDate(card.created_at, { year: 'numeric', month: 'short' }) : '—'}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onStatement}>
+              <FileText className="h-3.5 w-3.5" />
+              Ledger
+            </Button>
+            {canCredit && (
+              <Button variant="secondary" size="sm" onClick={onPayment}>
+                <Banknote className="h-3.5 w-3.5" />
+                Payment
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ArPipelineFooter({
+  summary,
+  onExport,
+  onSync,
+}: {
+  summary: CustomerSummary
+  onExport: () => void
+  onSync: () => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface-elevated">
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+        <span className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-foreground">
+          <Gauge className="h-3.5 w-3.5 text-primary" />
+          AR Collection Pipeline
+        </span>
+        <span className="rounded bg-secondary/10 px-1.5 py-0.5 font-mono text-[10px] text-secondary">
+          Health {summary.ar.book_health_pct}%
+        </span>
+      </div>
+      <div className="grid grid-cols-3 divide-x divide-border/60 border-t border-border/60">
+        <div className="p-3">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Outstanding</p>
+          <p className="mt-0.5 truncate font-mono text-sm font-bold text-foreground">
+            {formatCurrency(summary.pipeline.outstanding)}
+          </p>
+        </div>
+        <div className="p-3">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Accounts</p>
+          <p className="mt-0.5 font-mono text-sm font-bold text-foreground">{summary.pipeline.accounts}</p>
+        </div>
+        <div className="p-3">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Available</p>
+          <p className="mt-0.5 truncate font-mono text-sm font-bold text-secondary">
+            {formatCurrency(summary.pipeline.available)}
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 border-t border-border/60 p-3">
+        <Button variant="outline" size="sm" onClick={onExport}>
+          <Download className="h-3.5 w-3.5" />
+          Ageing Analysis
+        </Button>
+        <Button variant="outline" size="sm" onClick={onSync}>
+          <RefreshCw className="h-3.5 w-3.5" />
+          Sync CRM with ERP
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function RosterSkeleton() {
+  return (
+    <div className="space-y-2.5">
+      {[0, 1, 2].map((row) => (
+        <div key={row} className="rounded-2xl border border-border bg-surface-elevated p-3.5">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-3.5 w-40" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </div>
+          <Skeleton className="mt-3 h-14 w-full" />
+          <Skeleton className="mt-3 h-12 w-full" />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 type CustomerFormState = {
   name: string
@@ -58,16 +839,6 @@ type CustomerFormState = {
 
 const EMPTY_FORM: CustomerFormState = { name: '', email: '', phone: '', address: '', credit_limit: '' }
 
-function toForm(customer: Customer): CustomerFormState {
-  return {
-    name: customer.name,
-    email: customer.email ?? '',
-    phone: customer.phone ?? '',
-    address: customer.address ?? '',
-    credit_limit: customer.credit_limit ? String(customer.credit_limit) : '',
-  }
-}
-
 function toInput(form: CustomerFormState): CustomerInput {
   return {
     name: form.name.trim(),
@@ -78,215 +849,46 @@ function toInput(form: CustomerFormState): CustomerInput {
   }
 }
 
-export function CustomersPage() {
-  const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const [editorOpen, setEditorOpen] = useState(false)
-  const [editing, setEditing] = useState<Customer | null>(null)
-  const [form, setForm] = useState<CustomerFormState>(EMPTY_FORM)
-  const [paying, setPaying] = useState<Customer | null>(null)
-  const [viewing, setViewing] = useState<Customer | null>(null)
+function CustomerEditor({
+  customer,
+  onClose,
+  onSaved,
+}: {
+  customer: CustomerCard | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState<CustomerFormState>(() =>
+    customer
+      ? {
+          name: customer.name,
+          email: customer.email ?? '',
+          phone: customer.phone ?? '',
+          address: customer.address ?? '',
+          credit_limit: customer.credit_limit != null ? String(customer.credit_limit) : '',
+        }
+      : EMPTY_FORM,
+  )
 
-  const { data, isFetching, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['customers', { search, page }],
-    queryFn: () => customersApi.list({ search: search || undefined, page, per_page: 12 }),
-    placeholderData: (prev) => prev,
-  })
-
-  const rows = data?.data ?? []
-  const meta = data?.meta
-
-  const openCreate = () => {
-    setEditing(null)
-    setForm(EMPTY_FORM)
-    setEditorOpen(true)
-  }
-
-  const openEdit = (customer: Customer) => {
-    setEditing(customer)
-    setForm(toForm(customer))
-    setEditorOpen(true)
-  }
+  const set = (patch: Partial<CustomerFormState>) => setForm((prev) => ({ ...prev, ...patch }))
 
   const save = useMutation({
     mutationFn: (input: CustomerInput) =>
-      editing ? customersApi.update(editing.id, input) : customersApi.create(input),
+      customer ? customersApi.update(customer.id, input) : customersApi.create(input),
     onSuccess: () => {
-      toast.success(editing ? 'Customer updated' : 'Customer created')
-      setEditorOpen(false)
-      void queryClient.invalidateQueries({ queryKey: ['customers'] })
+      toast.success(customer ? 'Customer updated' : 'Customer created')
+      onClose()
+      onSaved()
     },
     onError: (err) => {
-      toast.error(`Could not save customer`, {
+      toast.error('Could not save customer', {
         description: err instanceof ApiError ? err.message : undefined,
       })
     },
   })
 
   return (
-    <div className="animate-fade-in">
-      <PageHeader
-        title="Customers"
-        description="Customers on credit, balances, statements and payment history."
-      >
-        <Button size="sm" onClick={openCreate}>
-          <UserPlus className="h-4 w-4" />
-          New customer
-        </Button>
-      </PageHeader>
-
-      <SearchInput
-        placeholder="Search name, phone, email…"
-        className="mb-4"
-        onSearch={(value) => {
-          setPage(1)
-          setSearch(value)
-        }}
-      />
-
-      {isLoading && <LoadingState variant="table" rows={8} />}
-      {isError && <ErrorState error={error} onRetry={() => refetch()} />}
-
-      {!isLoading && !isError && rows.length === 0 && (
-        <EmptyState
-          title="No customers found"
-          description="Try adjusting your search, or add your first customer."
-          icon={<Users className="h-6 w-6" />}
-          action={
-            <Button variant="outline" size="sm" onClick={openCreate}>
-              New customer
-            </Button>
-          }
-        />
-      )}
-
-      {!isLoading && !isError && rows.length > 0 && (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Customer</TableHead>
-                <TableHead>Credit limit</TableHead>
-                <TableHead>Outstanding</TableHead>
-                <TableHead>Total purchases</TableHead>
-                <TableHead>Since</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((customer) => (
-                <TableRow key={customer.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback>{initials(customer.name)}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {customer.name}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {customer.phone ?? customer.email ?? 'No contact'}
-                        </p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm tabular-nums text-muted-foreground">
-                    {customer.credit_limit != null
-                      ? formatCurrency(customer.credit_limit)
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={
-                        customer.outstanding_balance > 0
-                          ? 'text-sm font-semibold tabular-nums text-warning'
-                          : 'text-sm tabular-nums text-muted-foreground'
-                      }
-                    >
-                      {formatCurrency(customer.outstanding_balance)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm tabular-nums text-muted-foreground">
-                    {formatNumber(customer.total_purchases)}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(customer.created_at, { year: 'numeric', month: 'short' })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
-                          <span className="sr-only">Actions</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setViewing(customer)}>
-                          <FileText className="h-4 w-4" />
-                          Statement
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setPaying(customer)}>
-                          <Banknote className="h-4 w-4" />
-                          Record payment
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => openEdit(customer)}>
-                          <Pencil className="h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          <Pagination
-            page={meta?.current_page ?? page}
-            lastPage={meta?.last_page ?? 1}
-            total={meta?.total}
-            totalLabel="customers"
-            isFetching={isFetching}
-            onPageChange={setPage}
-          />
-        </>
-      )}
-
-      {editorOpen && (
-        <CustomerEditor
-          customer={editing}
-          form={form}
-          onChange={setForm}
-          saving={save.isPending}
-          onCancel={() => setEditorOpen(false)}
-          onSave={() => save.mutate(toInput(form))}
-        />
-      )}
-
-      {viewing && <StatementDialog customer={viewing} onClose={() => setViewing(null)} />}
-
-      {paying && <PaymentDialog customer={paying} onClose={() => setPaying(null)} />}
-    </div>
-  )
-}
-
-interface CustomerEditorProps {
-  customer: Customer | null
-  form: CustomerFormState
-  onChange: (form: CustomerFormState) => void
-  saving: boolean
-  onCancel: () => void
-  onSave: () => void
-}
-
-function CustomerEditor({ customer, form, onChange, saving, onCancel, onSave }: CustomerEditorProps) {
-  const set = (patch: Partial<CustomerFormState>) => onChange({ ...form, ...patch })
-
-  return (
-    <Dialog open onOpenChange={onCancel}>
+    <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{customer ? 'Edit customer' : 'New customer'}</DialogTitle>
@@ -348,10 +950,15 @@ function CustomerEditor({ customer, form, onChange, saving, onCancel, onSave }: 
         </div>
 
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onCancel}>
+          <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" loading={saving} disabled={!form.name.trim()} onClick={onSave}>
+          <Button
+            size="sm"
+            loading={save.isPending}
+            disabled={!form.name.trim()}
+            onClick={() => save.mutate(toInput(form))}
+          >
             {customer ? 'Save changes' : 'Create customer'}
           </Button>
         </DialogFooter>
@@ -360,13 +967,15 @@ function CustomerEditor({ customer, form, onChange, saving, onCancel, onSave }: 
   )
 }
 
-interface PaymentDialogProps {
-  customer: Customer
+function PaymentDialog({
+  card,
+  onClose,
+  onSaved,
+}: {
+  card: CustomerCard
   onClose: () => void
-}
-
-function PaymentDialog({ customer, onClose }: PaymentDialogProps) {
-  const queryClient = useQueryClient()
+  onSaved: () => void
+}) {
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('cash')
   const [reference, setReference] = useState('')
@@ -374,7 +983,7 @@ function PaymentDialog({ customer, onClose }: PaymentDialogProps) {
   const pay = useMutation({
     mutationFn: () =>
       customersApi.pay({
-        customer_id: customer.id,
+        customer_id: card.id,
         amount: Number(amount),
         method,
         reference: reference.trim() || undefined,
@@ -382,7 +991,7 @@ function PaymentDialog({ customer, onClose }: PaymentDialogProps) {
     onSuccess: () => {
       toast.success('Payment recorded')
       onClose()
-      void queryClient.invalidateQueries({ queryKey: ['customers'] })
+      onSaved()
     },
     onError: (err) => {
       toast.error('Could not record payment', {
@@ -397,7 +1006,7 @@ function PaymentDialog({ customer, onClose }: PaymentDialogProps) {
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>
-            {customer.name} owes {formatCurrency(customer.outstanding_balance)}.
+            {card.name} owes {formatCurrency(card.outstanding_balance)}.
           </DialogDescription>
         </DialogHeader>
 
@@ -460,29 +1069,22 @@ function PaymentDialog({ customer, onClose }: PaymentDialogProps) {
   )
 }
 
-interface StatementDialogProps {
-  customer: Customer
-  onClose: () => void
-}
-
-function StatementDialog({ customer, onClose }: StatementDialogProps) {
+function StatementDialog({ card, onClose }: { card: CustomerCard; onClose: () => void }) {
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['customers', customer.id, 'statement'],
-    queryFn: () => customersApi.statement(customer.id),
+    queryKey: ['customers', card.id, 'statement'],
+    queryFn: () => customersApi.statement(card.id),
   })
 
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Statement — {customer.name}</DialogTitle>
+          <DialogTitle>Statement — {card.name}</DialogTitle>
           <DialogDescription>Ledger entries as calculated by the backend.</DialogDescription>
         </DialogHeader>
 
         {isLoading && (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          </div>
+          <LoadingState variant="table" rows={5} />
         )}
         {isError && <ErrorState error={error} onRetry={() => refetch()} />}
 

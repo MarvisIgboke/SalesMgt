@@ -42,6 +42,11 @@ class StockBatch extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
     public function daysRemaining(): ?int
     {
         if ($this->expiry_date === null) {

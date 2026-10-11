@@ -65,6 +65,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     clearToken()
     setRequestContext({ businessId: null, branchId: null })
     set({ status: 'unauthenticated', session: null })
+    useAppStore.setState({ context: null, contextLoaded: false, contextError: null, branches: [] })
   },
 
   setSession(session) {

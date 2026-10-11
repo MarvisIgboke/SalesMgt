@@ -62,8 +62,14 @@ const BusinessesPage = lazy(() =>
 const ShiftsPage = lazy(() =>
   import('@/pages/shifts/shifts-page').then((m) => ({ default: m.ShiftsPage })),
 )
+const ShiftDetailPage = lazy(() =>
+  import('@/pages/shifts/shift-detail-page').then((m) => ({ default: m.ShiftDetailPage })),
+)
 const ReportsPage = lazy(() =>
   import('@/pages/reports/reports-page').then((m) => ({ default: m.ReportsPage })),
+)
+const FinancialReportPage = lazy(() =>
+  import('@/pages/reports/financial-report-page').then((m) => ({ default: m.FinancialReportPage })),
 )
 const NotificationsPage = lazy(() =>
   import('@/pages/notifications/notifications-page').then((m) => ({ default: m.NotificationsPage })),
@@ -243,10 +249,26 @@ export const router = createBrowserRouter([
                 ),
               },
               {
+                path: '/shifts/:id',
+                element: (
+                  <Page variant="cards">
+                    <ShiftDetailPage />
+                  </Page>
+                ),
+              },
+              {
                 path: '/reports',
                 element: (
                   <Page variant="cards">
                     <ReportsPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/reports/financial',
+                element: (
+                  <Page variant="cards">
+                    <FinancialReportPage />
                   </Page>
                 ),
               },

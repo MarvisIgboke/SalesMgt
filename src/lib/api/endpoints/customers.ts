@@ -46,9 +46,93 @@ export interface CustomerPaymentInput {
   notes?: string
 }
 
+export interface CustomerProfileStats {
+  total: number
+  new_this_week: number
+  wholesale: number
+  vip: number
+  walkin: number
+}
+
+export interface CustomerArStats {
+  total: number
+  accounts: number
+  due_high: number
+  credit_accounts: number
+  current_accounts: number
+  book_health_pct: number
+  available: number
+  utilisation_pct: number
+}
+
+export interface CustomerLoyaltyStats {
+  repeat_buyers: number
+  retention_pct: number
+  lifetime_orders: number
+}
+
+export interface CustomerGmvStats {
+  value: number
+  orders: number
+  average: number
+  prev_value: number
+  mom_pct: number
+}
+
+export interface CustomerFilterCounts {
+  all: number
+  wholesale: number
+  vip: number
+  credit_due: number
+  walkin: number
+}
+
+export interface CustomerPipelineStats {
+  outstanding: number
+  accounts: number
+  available: number
+}
+
+export interface CustomerCard {
+  id: number
+  name: string
+  email?: string | null
+  phone?: string | null
+  address?: string | null
+  account_code: string
+  segment: string
+  tier: string
+  credit_limit: number | null
+  outstanding_balance: number
+  credit_remaining: number | null
+  utilisation_pct: number
+  over_limit: boolean
+  lifetime_spend: number
+  orders_total: number
+  orders_30d: number
+  spend_30d: number
+  last_purchase_at?: string | null
+  is_walkin: boolean
+  created_at?: string | null
+}
+
+export interface CustomerSummary {
+  business_id: number
+  currency: string
+  profiles: CustomerProfileStats
+  ar: CustomerArStats
+  loyalty: CustomerLoyaltyStats
+  gmv_30d: CustomerGmvStats
+  filters: CustomerFilterCounts
+  pipeline: CustomerPipelineStats
+  customers: CustomerCard[]
+}
+
 export const customersApi = {
   list: (params?: { page?: number; per_page?: number; search?: string }) =>
     http.get<Paginated<Customer>>('/customers', { params }),
+
+  summary: () => http.get<ApiEnvelope<CustomerSummary>>('/customers/summary'),
 
   get: (id: number) => http.get<ApiEnvelope<Customer>>(`/customers/${id}`),
 

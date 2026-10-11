@@ -48,7 +48,34 @@ function initialTheme(): Theme {
   }
 }
 
-export const useAppStore = create<AppState>((set) => ({
+type BranchPref = number | 'all'
+
+function branchPrefKey(businessId: number): string {
+  return `salesmgt.branch.${businessId}`
+}
+
+function loadBranchPref(businessId: number): BranchPref | null {
+  try {
+    const raw = localStorage.getItem(branchPrefKey(businessId))
+    if (raw === null) return null
+    if (raw === 'all') return 'all'
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function saveBranchPref(businessId: number, value: BranchPref | null): void {
+  try {
+    if (value === null) localStorage.removeItem(branchPrefKey(businessId))
+    else localStorage.setItem(branchPrefKey(businessId), String(value))
+  } catch {
+    /* ignore */
+  }
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
   theme: initialTheme(),
   sidebarOpen: true,
   mobileNavOpen: false,
@@ -83,6 +110,21 @@ export const useAppStore = create<AppState>((set) => ({
         const result = await businessApi.listBranches({ per_page: 100 })
         set({ branches: result.data })
       }
+
+      // Restore the user's last branch selection ("all branches" or a specific branch).
+      const pref = loadBranchPref(data.business.id)
+      if (pref !== null) {
+        const desiredId = pref === 'all' ? null : pref
+        const currentId = data.branch?.id ?? null
+        if (desiredId !== currentId) {
+          try {
+            await get().switchBranch(desiredId)
+          } catch {
+            // The remembered branch is no longer accessible; fall back to the default.
+            saveBranchPref(data.business.id, null)
+          }
+        }
+      }
     } catch (error) {
       set({ contextLoaded: true, contextError: error instanceof Error ? error.message : String(error) })
     }
@@ -94,6 +136,7 @@ export const useAppStore = create<AppState>((set) => ({
       const { data } = await businessApi.switchBranch(branchId ?? null)
       setRequestContext({ branchId: branchId ?? null })
       set({ context: data as ActiveContext, switchPending: false })
+      saveBranchPref(data.business.id, branchId ?? 'all')
     } catch (error) {
       set({ switchPending: false })
       throw error

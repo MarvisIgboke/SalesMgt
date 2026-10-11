@@ -13,6 +13,7 @@ import {
   UserCog,
   Clock4,
   BarChart3,
+  Landmark,
   Bell,
   Settings,
   CreditCard,
@@ -85,6 +86,7 @@ export const navSections: NavSection[] = [
     title: 'System',
     items: [
       { label: 'Reports', path: '/reports', icon: BarChart3, section: 'system', permissions: ['reports.view'] },
+      { label: 'Financial Report', path: '/reports/financial', icon: Landmark, section: 'system', permissions: ['reports.view'] },
       { label: 'Notifications', path: '/notifications', icon: Bell, section: 'system', permissions: ['notifications.view'] },
       { label: 'Subscription', path: '/subscription', icon: CreditCard, section: 'system', permissions: ['subscription.view'] },
       { label: 'Settings', path: '/settings', icon: Settings, section: 'system' },
@@ -103,6 +105,28 @@ export const navSections: NavSection[] = [
 export const flatNav = navSections.flatMap((section) =>
   section.items.map((item) => ({ ...item, sectionId: section.id })),
 )
+
+const sectionTitleById: Record<string, string> = Object.fromEntries(
+  navSections.map((section) => [section.id, section.title]),
+)
+
+/**
+ * Resolve the navigation section title that owns a path (longest prefix match).
+ * Used to render a consistent mono "eyebrow" label in page headers.
+ */
+export function navSectionTitleForPath(path: string): string | null {
+  const normalized = path.replace(/\/+$/, '') || '/'
+  let best: NavItem | null = null
+
+  for (const item of flatNav) {
+    const itemPath = item.path.replace(/\/+$/, '')
+    if (normalized === itemPath || normalized.startsWith(`${itemPath}/`)) {
+      if (!best || item.path.length > best.path.length) best = item
+    }
+  }
+
+  return best ? (sectionTitleById[best.section] ?? null) : null
+}
 
 export const primaryActions = [
   { label: 'Dashboard', path: '/dashboard' },

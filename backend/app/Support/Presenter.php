@@ -48,6 +48,7 @@ final class Presenter
 
         return [
             'id' => $branch->id,
+            'business_id' => $branch->business_id,
             'name' => $branch->name,
             'code' => $branch->code,
             'address' => $branch->address,

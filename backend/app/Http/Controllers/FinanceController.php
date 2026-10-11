@@ -18,7 +18,9 @@ use App\Services\InventoryService;
 use App\Support\ApiResponse;
 use App\Support\ReferenceGenerator;
 use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class FinanceController extends Controller
@@ -35,14 +37,78 @@ class FinanceController extends Controller
 
         $status = $request->query('status');
 
-        $paginator = SaleApproval::query()
-            ->with(['sale.branch', 'sale.user', 'sale.customer'])
+        $paginator = $this->approvalsQuery()
             ->when(in_array($status, ['pending', 'awaiting_approval'], true), fn ($q) => $q->where('status', 'pending'))
             ->when(in_array($status, ['approved', 'rejected'], true), fn ($q) => $q->where('status', $status))
             ->orderByDesc('id')
             ->paginate($this->perPage($request));
 
-        return ApiResponse::paginator($paginator, map: fn (SaleApproval $approval) => $this->presentApproval($approval));
+        return ApiResponse::paginator(
+            $paginator,
+            map: fn (SaleApproval $approval) => $this->presentApproval($approval),
+            extra: ['summary' => $this->approvalsSummary()],
+        );
+    }
+
+    private function approvalsQuery(): Builder
+    {
+        $businessId = TenantContext::businessId();
+
+        return SaleApproval::query()
+            ->with(['sale.branch', 'sale.user', 'sale.customer'])
+            ->when(
+                $businessId !== null,
+                fn ($q) => $q->whereHas('sale', fn ($sale) => $sale->where('business_id', $businessId)),
+            );
+    }
+
+    private function approvalsSummary(): array
+    {
+        $businessId = TenantContext::businessId();
+
+        $base = fn () => DB::table('sale_approvals')
+            ->join('sales', 'sales.id', '=', 'sale_approvals.sale_id')
+            ->when($businessId !== null, fn ($q) => $q->where('sales.business_id', $businessId));
+
+        $byStatus = $base()
+            ->groupBy('sale_approvals.status')
+            ->selectRaw('sale_approvals.status as status, COUNT(*) as total, COALESCE(SUM(sales.total), 0) as amount')
+            ->get()
+            ->keyBy('status');
+
+        $stat = function (string $status, ?string $column = null, ?string $operator = null, ?string $bound = null) use ($base): array {
+            $query = $base()->where('sale_approvals.status', $status);
+            if ($column !== null && $operator !== null && $bound !== null) {
+                $query->where('sale_approvals.'.$column, $operator, $bound);
+            }
+            $row = $query->selectRaw('COUNT(*) as total, COALESCE(SUM(sales.total), 0) as amount')->first();
+
+            return ['count' => (int) ($row->total ?? 0), 'amount' => round((float) ($row->amount ?? 0), 2)];
+        };
+
+        $startOfToday = now()->startOfDay()->toDateTimeString();
+        $overdueBefore = now()->subDay()->toDateTimeString();
+
+        $overdue = $stat('pending', 'created_at', '<', $overdueBefore);
+        $cleared = $stat('approved', 'decided_at', '>=', $startOfToday);
+        $rejected = $stat('rejected', 'decided_at', '>=', $startOfToday);
+
+        $oldestPending = $base()
+            ->where('sale_approvals.status', 'pending')
+            ->min('sale_approvals.created_at');
+
+        return [
+            'pending_count' => (int) ($byStatus['pending']->total ?? 0),
+            'pending_amount' => round((float) ($byStatus['pending']->amount ?? 0), 2),
+            'approved_count' => (int) ($byStatus['approved']->total ?? 0),
+            'rejected_count' => (int) ($byStatus['rejected']->total ?? 0),
+            'overdue_count' => $overdue['count'],
+            'oldest_pending_at' => $oldestPending !== null ? Carbon::parse($oldestPending)->toIso8601String() : null,
+            'cleared_today_count' => $cleared['count'],
+            'cleared_today_amount' => $cleared['amount'],
+            'rejected_today_count' => $rejected['count'],
+            'rejected_today_amount' => $rejected['amount'],
+        ];
     }
 
     public function decide(Request $request, int $approval)

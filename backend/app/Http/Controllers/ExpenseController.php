@@ -23,6 +23,14 @@ class ExpenseController extends Controller
             ->with(['category', 'branch', 'submitter', 'approver'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
             ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')))
+            ->when($request->filled('category'), fn ($q) => $q->whereHas('category', fn ($c) => $c->where('name', $request->string('category'))))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = '%'.$request->string('search').'%';
+                $q->where(fn ($s) => $s->where('reference', 'like', $term)
+                    ->orWhere('description', 'like', $term)
+                    ->orWhereHas('category', fn ($c) => $c->where('name', 'like', $term))
+                    ->orWhereHas('submitter', fn ($u) => $u->where('name', 'like', $term)));
+            })
             ->orderByDesc('id')
             ->paginate($this->perPage($request));
 
@@ -88,12 +96,13 @@ class ExpenseController extends Controller
         };
 
         $base = fn () => Expense::query()
-            ->when($validated['branch_id'] ?? null, fn ($q, $branch) => $q->where('expenses.branch_id', $branch))
-            ->whereBetween('expenses.created_at', [$from, $to]);
+            ->when($validated['branch_id'] ?? null, fn ($q, $branch) => $q->where('expenses.branch_id', $branch));
 
-        $total = (float) $base()->whereIn('expenses.status', ['approved', 'paid'])->sum('expenses.amount');
+        $periodBase = fn () => $base()->whereBetween('expenses.created_at', [$from, $to]);
 
-        $byCategory = $base()
+        $total = (float) $periodBase()->whereIn('expenses.status', ['approved', 'paid'])->sum('expenses.amount');
+
+        $byCategory = $periodBase()
             ->whereIn('expenses.status', ['approved', 'paid'])
             ->join('expense_categories', 'expense_categories.id', '=', 'expenses.expense_category_id')
             ->groupBy('expense_categories.name')
@@ -103,15 +112,58 @@ class ExpenseController extends Controller
             ->values()
             ->all();
 
-        $pendingCount = Expense::query()
-            ->when($validated['branch_id'] ?? null, fn ($q, $branch) => $q->where('branch_id', $branch))
-            ->where('status', 'pending')
-            ->count();
+        $pendingCount = $base()->where('status', 'pending')->count();
+        $pendingValue = (float) $base()->where('status', 'pending')->sum('amount');
+
+        $mtdSubmitted = $periodBase()
+            ->selectRaw('COUNT(*) AS aggregate_count, COALESCE(SUM(expenses.amount), 0) AS aggregate_value')
+            ->first();
+
+        $approved = $periodBase()
+            ->whereIn('expenses.status', ['approved', 'paid'])
+            ->selectRaw('COUNT(*) AS aggregate_count, COALESCE(SUM(expenses.amount), 0) AS aggregate_value')
+            ->first();
+
+        $rejected = $periodBase()
+            ->where('expenses.status', 'rejected')
+            ->selectRaw('COUNT(*) AS aggregate_count, COALESCE(SUM(expenses.amount), 0) AS aggregate_value')
+            ->first();
+
+        $statusCounts = ['all' => 0, 'pending' => 0, 'approved' => 0, 'rejected' => 0, 'awaiting_approval' => 0];
+        foreach ($base()->selectRaw('status, COUNT(*) AS aggregate_count')->groupBy('status')->get() as $row) {
+            $status = (string) $row->status;
+            if (array_key_exists($status, $statusCounts)) {
+                $statusCounts[$status] = (int) $row->aggregate_count;
+            }
+            $statusCounts['all'] += (int) $row->aggregate_count;
+        }
+
+        $categoryCounts = $base()
+            ->join('expense_categories', 'expense_categories.id', '=', 'expenses.expense_category_id')
+            ->groupBy('expense_categories.name')
+            ->selectRaw('expense_categories.name AS category, COUNT(*) AS aggregate_count')
+            ->orderByDesc('aggregate_count')
+            ->get()
+            ->map(fn ($row) => ['category' => (string) $row->category, 'count' => (int) $row->aggregate_count])
+            ->values()
+            ->all();
 
         return ApiResponse::success([
             'total' => round($total, 2),
             'by_category' => $byCategory,
             'pending_count' => $pendingCount,
+            'pending_value' => round($pendingValue, 2),
+            'period' => [
+                'submitted_count' => (int) ($mtdSubmitted->aggregate_count ?? 0),
+                'submitted_value' => round((float) ($mtdSubmitted->aggregate_value ?? 0), 2),
+                'approved_count' => (int) ($approved->aggregate_count ?? 0),
+                'approved_value' => round((float) ($approved->aggregate_value ?? 0), 2),
+                'rejected_count' => (int) ($rejected->aggregate_count ?? 0),
+                'rejected_value' => round((float) ($rejected->aggregate_value ?? 0), 2),
+            ],
+            'status_counts' => $statusCounts,
+            'category_counts' => $categoryCounts,
+            'business_id' => TenantContext::businessId(),
         ]);
     }
 

@@ -1,29 +1,44 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
+  AlertTriangle,
+  ArrowLeftRight,
   Barcode,
+  Boxes,
+  CheckCircle2,
+  CheckSquare,
+  FileDown,
+  History,
+  Hourglass,
   Loader2,
   MoreHorizontal,
   PackagePlus,
+  PackageX,
   Pencil,
   Plus,
-  Split,
+  ScanLine,
+  Search,
+  Snowflake,
+  Square,
   Trash2,
+  TrendingDown,
+  Warehouse,
   X,
 } from 'lucide-react'
 import {
+  catalogApi,
   productsApi,
   type Product,
   type ProductInput,
 } from '@/lib/api/endpoints/products'
+import { inventoryApi } from '@/lib/api/endpoints/inventory'
+import { ScannerDialog } from '@/features/pos/scanner-dialog'
 import { useAppStore } from '@/stores/app'
-import { PageHeader } from '@/components/common/page-header'
-import { SearchInput } from '@/components/common/search-input'
 import { Pagination } from '@/components/common/pagination'
 import { LoadingState } from '@/components/common/loading-state'
 import { ErrorState } from '@/components/common/error-state'
 import { EmptyState } from '@/components/common/empty-state'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,9 +68,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatNumber, cn, debounce } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
+
+type CatalogView = 'catalog' | 'categories' | 'brands'
+
+const STOCK_META: Record<
+  string,
+  { label: string; dot: string; variant: 'success' | 'warning' | 'destructive' | 'muted' }
+> = {
+  in_stock: { label: 'In Stock', dot: 'bg-success', variant: 'success' },
+  low: { label: 'Low Stock', dot: 'bg-warning', variant: 'warning' },
+  out_of_stock: { label: 'Out of Stock', dot: 'bg-destructive', variant: 'destructive' },
+  untracked: { label: 'Not Stocked', dot: 'bg-muted-foreground', variant: 'muted' },
+}
 
 interface ProductFormState {
   name: string
@@ -112,22 +139,92 @@ function parseBarcodes(raw: string): string[] {
   )
 }
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+}
+
+function csvCell(value: string | number): string {
+  const text = String(value ?? '')
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function downloadCsv(rows: Product[]) {
+  const header = [
+    'Name',
+    'SKU',
+    'Brand',
+    'Category',
+    'Unit',
+    'Cost',
+    'Price',
+    'Tax %',
+    'Active',
+    'Stock',
+    'Status',
+  ]
+  const lines = rows.map((product) =>
+    [
+      product.name,
+      product.sku,
+      product.brand ?? '',
+      product.category ?? '',
+      product.unit ?? '',
+      product.cost_price,
+      product.selling_price,
+      product.tax_rate ?? '',
+      product.is_active ? 'yes' : 'no',
+      product.stock_tracked ? product.stock_qty ?? 0 : '',
+      product.stock_status ?? '',
+    ]
+      .map(csvCell)
+      .join(','),
+  )
+  const blob = new Blob([[header.join(','), ...lines].join('\r\n')], {
+    type: 'text/csv;charset=utf-8;',
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `products-${Date.now()}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 export function ProductsPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const branchId = useAppStore((s) => s.context?.branch?.id)
+  const branchName = useAppStore((s) => s.context?.branch?.name)
+
+  const [view, setView] = useState<CatalogView>('catalog')
   const [search, setSearch] = useState('')
+  const [category, setCategory] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [scannerOpen, setScannerOpen] = useState(false)
+
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM)
   const [deleting, setDeleting] = useState<Product | null>(null)
   const [barcoding, setBarcoding] = useState<Product | null>(null)
 
+  const dashboard = useQuery({
+    queryKey: ['inventory', 'dashboard', { branchId }],
+    queryFn: () => inventoryApi.dashboard({ branch_id: branchId }),
+    placeholderData: (prev) => prev,
+  })
+
   const { data, isFetching, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['products', { search, page, branchId }],
+    queryKey: ['products', { search, page, branchId, category }],
     queryFn: () =>
       productsApi.list({
         search: search || undefined,
+        category: category ?? undefined,
         page,
         per_page: 12,
         branch_id: branchId,
@@ -137,15 +234,21 @@ export function ProductsPage() {
 
   const categories = useQuery({
     queryKey: ['products', 'categories'],
-    queryFn: () => productsApi.categories(),
+    queryFn: () => catalogApi.categories(),
     placeholderData: (prev) => prev,
   })
 
   const brands = useQuery({
     queryKey: ['products', 'brands'],
-    queryFn: () => productsApi.brands(),
+    queryFn: () => catalogApi.brands(),
     placeholderData: (prev) => prev,
   })
+
+  const rows = useMemo(() => data?.data ?? [], [data])
+  const meta = data?.meta
+  const stats = dashboard.data?.data
+
+  const selectedRows = useMemo(() => rows.filter((row) => selected.has(row.id)), [rows, selected])
 
   const remove = useMutation({
     mutationFn: (id: number) => productsApi.remove(id),
@@ -153,6 +256,7 @@ export function ProductsPage() {
       toast.success('Product deleted')
       setDeleting(null)
       void queryClient.invalidateQueries({ queryKey: ['products'] })
+      void queryClient.invalidateQueries({ queryKey: ['inventory'] })
     },
     onError: (err) => {
       toast.error('Could not delete product', {
@@ -161,8 +265,26 @@ export function ProductsPage() {
     },
   })
 
-  const meta = data?.meta
-  const rows = data?.data ?? []
+  const bulkStatus = useMutation({
+    mutationFn: async ({ ids, is_active }: { ids: number[]; is_active: boolean }) => {
+      for (const id of ids) {
+        await productsApi.update(id, { is_active })
+      }
+      return ids.length
+    },
+    onSuccess: (count, variables) => {
+      toast.success(
+        `${count} ${count === 1 ? 'product' : 'products'} ${variables.is_active ? 'activated' : 'deactivated'}`,
+      )
+      setSelected(new Set())
+      void queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: (err) => {
+      toast.error('Bulk update failed', {
+        description: err instanceof ApiError ? err.message : undefined,
+      })
+    },
+  })
 
   const openCreate = () => {
     setEditing(null)
@@ -176,34 +298,112 @@ export function ProductsPage() {
     setEditorOpen(true)
   }
 
+  const toggle = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    setSelected((prev) => {
+      const all = rows.length > 0 && rows.every((row) => prev.has(row.id))
+      return all ? new Set() : new Set(rows.map((row) => row.id))
+    })
+  }
+
+  const closeDialogs = () => {
+    setEditorOpen(false)
+    setBarcoding(null)
+    setDeleting(null)
+  }
+
   return (
-    <div className="animate-fade-in">
-      <PageHeader
-        title="Products"
-        description="Catalogue, variants, barcodes and pricing. Prices are authoritative from the backend."
-      >
-        <Button size="sm" onClick={openCreate}>
-          <PackagePlus className="h-4 w-4" />
-          New product
-        </Button>
-      </PageHeader>
+    <div className="animate-fade-in space-y-4">
+      <CatalogHeader
+        branchName={branchName}
+        onAdd={openCreate}
+        onExport={() => {
+          if (rows.length === 0) {
+            toast.error('Nothing to export')
+            return
+          }
+          downloadCsv(rows)
+        }}
+      />
 
-      <Tabs defaultValue="catalogue">
-        <TabsList>
-          <TabsTrigger value="catalogue">Catalogue</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-        </TabsList>
+      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-surface-elevated p-1">
+        {(
+          [
+            { value: 'catalog', label: 'Catalog' },
+            { value: 'categories', label: 'Categories' },
+            { value: 'brands', label: 'Brands' },
+          ] as { value: CatalogView; label: string }[]
+        ).map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => setView(item.value)}
+            className={cn(
+              'rounded-xl px-3.5 py-1.5 text-xs font-medium transition-colors',
+              view === item.value
+                ? 'bg-primary/15 text-primary'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
 
-        <TabsContent value="catalogue">
-          <SearchInput
-            placeholder="Search name, SKU, barcode, brand…"
-            className="mb-4"
+      {view === 'catalog' && (
+        <>
+          <CatalogStats stats={stats} loading={dashboard.isLoading} errored={dashboard.isError} />
+
+          <CatalogSearch
             onSearch={(value) => {
               setPage(1)
               setSearch(value)
             }}
+            onScan={() => setScannerOpen(true)}
           />
+
+          <CategoryChips
+            categories={categories.data?.data ?? []}
+            active={category}
+            total={meta?.total}
+            onChange={(value) => {
+              setPage(1)
+              setCategory(value)
+            }}
+          />
+
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleAll}
+                role="checkbox"
+                aria-checked={selected.size > 0 && selected.size === rows.length}
+                aria-label="Select all"
+                className="text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {rows.length > 0 && selected.size === rows.length ? (
+                  <CheckSquare className="h-4 w-4 text-primary" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+              </button>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                Select all on screen
+              </span>
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {rows.length} / {formatNumber(meta?.total ?? 0)} shown
+            </span>
+          </div>
 
           {isLoading && <LoadingState rows={6} />}
           {isError && <ErrorState error={error} onRetry={() => refetch()} />}
@@ -211,7 +411,7 @@ export function ProductsPage() {
           {!isLoading && !isError && rows.length === 0 && (
             <EmptyState
               title="No products found"
-              description="Try adjusting your search, or add a product."
+              description="Try adjusting your search or filters, or add a product."
               icon={<PackagePlus className="h-6 w-6" />}
               action={
                 <Button variant="outline" size="sm" onClick={openCreate}>
@@ -223,97 +423,18 @@ export function ProductsPage() {
 
           {!isLoading && !isError && rows.length > 0 && (
             <>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
                 {rows.map((product) => (
-                  <Card
+                  <ProductCard
                     key={product.id}
-                    className="group relative p-4 transition-shadow hover:shadow-card-hover"
-                  >
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="absolute right-2.5 top-2.5 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
-                        >
-                          <span className="sr-only">Product actions</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(product)}>
-                          <Pencil className="h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setBarcoding(product)}>
-                          <Barcode className="h-4 w-4" />
-                          Manage barcodes
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => setDeleting(product)}
-                          className="!text-destructive focus:!bg-destructive/10 focus:!text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <div className="flex items-start gap-3 pr-8">
-                      <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-border/70 bg-surface text-lg font-semibold text-muted-foreground">
-                        {product.image_url ? (
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          product.name.charAt(0).toUpperCase()
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-foreground">
-                            {product.name}
-                          </p>
-                          {!product.is_active && (
-                            <Badge variant="muted" className="shrink-0">Inactive</Badge>
-                          )}
-                        </div>
-                        <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                          {product.sku}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          {product.category && (
-                            <Badge variant="secondary" className="text-[10px]">{product.category}</Badge>
-                          )}
-                          {product.brand && (
-                            <Badge variant="outline" className="text-[10px]">{product.brand}</Badge>
-                          )}
-                          {product.has_variants && (
-                            <Badge variant="outline" className="gap-1 text-[10px]">
-                              <Split className="h-3 w-3" /> {product.variants?.length} variants
-                            </Badge>
-                          )}
-                          {product.barcodes.length > 0 && (
-                            <Badge variant="outline" className="gap-1 text-[10px]">
-                              <Barcode className="h-3 w-3" /> {product.barcodes.length}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-3">
-                      <p className="text-base font-bold text-foreground">
-                        {formatCurrency(product.selling_price)}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Cost {formatCurrency(product.cost_price)}
-                      </p>
-                    </div>
-                  </Card>
+                    product={product}
+                    selected={selected.has(product.id)}
+                    onToggle={() => toggle(product.id)}
+                    onEdit={() => openEdit(product)}
+                    onStock={() => navigate('/inventory')}
+                    onBarcodes={() => setBarcoding(product)}
+                    onDelete={() => setDeleting(product)}
+                  />
                 ))}
               </div>
 
@@ -329,48 +450,82 @@ export function ProductsPage() {
           )}
 
           {isFetching && !isLoading && (
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
               {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-32 w-full rounded-2xl" />
+                <Skeleton key={i} className="h-56 w-full rounded-2xl" />
               ))}
             </div>
           )}
-        </TabsContent>
+        </>
+      )}
 
-        <TabsContent value="categories">
-          {categories.isLoading && <LoadingState rows={4} />}
-          {categories.isError && <ErrorState error={categories.error} onRetry={() => categories.refetch()} />}
-          {categories.data?.data && categories.data.data.length === 0 && (
-            <EmptyState title="No categories yet" description="Add categories in the backend." />
-          )}
-          {categories.data?.data && categories.data.data.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {categories.data.data.map((category) => (
-                <Badge key={category.id} variant="secondary" className="px-3 py-1.5 text-sm">
-                  {category.name}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+      {view === 'categories' && (
+        <TagPanel
+          query={categories}
+          title="No categories yet"
+          description="Categories are created automatically when you tag a product."
+          variant="secondary"
+        />
+      )}
 
-        <TabsContent value="brands">
-          {brands.isLoading && <LoadingState rows={4} />}
-          {brands.isError && <ErrorState error={brands.error} onRetry={() => brands.refetch()} />}
-          {brands.data?.data && brands.data.data.length === 0 && (
-            <EmptyState title="No brands yet" description="Add brands in the backend." />
-          )}
-          {brands.data?.data && brands.data.data.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {brands.data.data.map((brand) => (
-                <Badge key={brand.id} variant="outline" className="px-3 py-1.5 text-sm">
-                  {brand.name}
-                </Badge>
-              ))}
+      {view === 'brands' && (
+        <TagPanel
+          query={brands}
+          title="No brands yet"
+          description="Brands are created automatically when you tag a product."
+          variant="outline"
+        />
+      )}
+
+      {selectedRows.length > 0 && (
+        <div className="fixed inset-x-0 bottom-16 z-30 px-3 lg:bottom-4">
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/95 p-3 shadow-card backdrop-blur">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 font-mono text-xs font-bold text-primary">
+                {selectedRows.length}
+              </span>
+              <span className="text-xs font-medium text-foreground">selected</span>
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bulkStatus.isPending}
+                onClick={() => bulkStatus.mutate({ ids: [...selected], is_active: false })}
+              >
+                <PackageX /> Deactivate
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={bulkStatus.isPending}
+                onClick={() => bulkStatus.mutate({ ids: [...selected], is_active: true })}
+              >
+                <CheckCircle2 /> Activate
+              </Button>
+              <Button variant="success" size="sm" onClick={() => downloadCsv(selectedRows)}>
+                <FileDown /> Export
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedRows.length > 0 && <div className="h-20" />}
+
+      <ScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onBarcode={(barcode) => {
+          setScannerOpen(false)
+          setPage(1)
+          setCategory(null)
+          setSearch(barcode)
+        }}
+      />
 
       {editorOpen && (
         <ProductEditorDialog
@@ -379,15 +534,15 @@ export function ProductsPage() {
           onChange={setForm}
           categories={categories.data?.data ?? []}
           brands={brands.data?.data ?? []}
-          onClose={() => setEditorOpen(false)}
+          onClose={closeDialogs}
         />
       )}
 
-      {barcoding && <BarcodesDialog product={barcoding} onClose={() => setBarcoding(null)} />}
+      {barcoding && <BarcodesDialog product={barcoding} onClose={closeDialogs} />}
 
       {deleting && (
-        <Dialog open onOpenChange={() => setDeleting(null)}>
-          <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
+        <Dialog open onOpenChange={closeDialogs}>
+          <DialogContent className="max-h-[90vh] max-w-sm overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Delete product</DialogTitle>
               <DialogDescription>
@@ -396,7 +551,7 @@ export function ProductsPage() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setDeleting(null)}>
+              <Button variant="outline" size="sm" onClick={closeDialogs}>
                 Cancel
               </Button>
               <Button
@@ -415,13 +570,500 @@ export function ProductsPage() {
   )
 }
 
-interface ProductEditorDialogProps {
-  product: Product | null
-  form: ProductFormState
-  onChange: (form: ProductFormState) => void
+function CatalogHeader({
+  branchName,
+  onAdd,
+  onExport,
+}: {
+  branchName?: string | null
+  onAdd: () => void
+  onExport: () => void
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface-elevated p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+            <span className="font-mono text-[10px] uppercase tracking-wider text-success">
+              Catalogue
+            </span>
+          </div>
+          <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+            Products Catalog
+          </h1>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Warehouse className="h-3.5 w-3.5 shrink-0 text-primary" />
+            Branch: <span className="truncate text-foreground">{branchName ?? 'All branches'}</span>
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onExport}>
+            <FileDown /> CSV
+          </Button>
+          <Button size="sm" onClick={onAdd}>
+            <Plus /> Add Product
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CatalogStats({
+  stats,
+  loading,
+  errored,
+}: {
+  stats?: {
+    total_sku: number
+    total_units: number
+    inventory_value: number
+    low_stock_count: number
+    out_of_stock_count: number
+    damaged_count: number
+    expired_count: number
+  }
+  loading: boolean
+  errored: boolean
+}) {
+  const totalSku = stats?.total_sku ?? 0
+  const low = stats?.low_stock_count ?? 0
+  const out = stats?.out_of_stock_count ?? 0
+  const inStock = Math.max(0, totalSku - low - out)
+  const inStockPct = totalSku > 0 ? Math.round((inStock / totalSku) * 100) : 0
+
+  const value = (n: number, format: (v: number) => string) =>
+    loading ? '—' : errored ? 'n/a' : format(n)
+
+  const tiles = [
+    { label: 'Active SKUs', value: value(totalSku, formatNumber), tone: 'text-foreground' },
+    { label: 'Low Stock', value: value(low, formatNumber), tone: 'text-warning' },
+    { label: 'Valuation', value: value(stats?.inventory_value ?? 0, formatCurrency), tone: 'text-primary' },
+  ]
+
+  const kpis = [
+    {
+      icon: CheckCircle2,
+      tone: 'text-success',
+      value: loading ? '—' : errored ? 'n/a' : `${inStockPct}%`,
+      sub: loading ? '' : `${formatNumber(inStock)} in stock`,
+      label: 'In Stock',
+    },
+    {
+      icon: TrendingDown,
+      tone: 'text-warning',
+      value: value(low, formatNumber),
+      sub: 'Reorder',
+      label: 'Low Level',
+    },
+    {
+      icon: PackageX,
+      tone: 'text-destructive',
+      value: value(out, formatNumber),
+      sub: 'Stockout',
+      label: 'Zero',
+    },
+    {
+      icon: Hourglass,
+      tone: 'text-warning',
+      value: value(stats?.expired_count ?? 0, formatNumber),
+      sub: 'Expiring',
+      label: '< 30d',
+    },
+  ]
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-border bg-surface-sunken p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <Boxes className="h-3.5 w-3.5 text-primary" /> Inventory health
+        </span>
+        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-success">
+          <span className="h-2 w-2 rounded-full bg-success" /> Ledger synced
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {tiles.map((tile) => (
+          <div key={tile.label} className="rounded-lg bg-surface p-2.5">
+            <span className="block font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+              {tile.label}
+            </span>
+            <span className={cn('mt-0.5 block truncate text-sm font-bold tabular-nums', tile.tone)}>
+              {tile.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-4 gap-2">
+        {kpis.map((kpi) => (
+          <div
+            key={kpi.label}
+            className="flex flex-col items-center rounded-lg bg-surface p-2 text-center"
+          >
+            <span className={cn('flex items-center gap-1 font-mono text-[9px]', kpi.tone)}>
+              <kpi.icon className="h-3.5 w-3.5" />
+              {kpi.label}
+            </span>
+            <span className={cn('mt-0.5 text-sm font-bold tabular-nums', kpi.tone)}>{kpi.value}</span>
+            {kpi.sub && (
+              <span className="mt-0.5 truncate text-[9px] text-muted-foreground">{kpi.sub}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {errored && (
+        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+          Inventory insights need the inventory.view permission.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function CatalogSearch({
+  onSearch,
+  onScan,
+}: {
+  onSearch: (value: string) => void
+  onScan: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const debounced = useRef(debounce((value: string) => onSearch(value), 350))
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'F2' || (event.key === '/' && !isTypingTarget(event.target))) {
+        event.preventDefault()
+        inputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        ref={inputRef}
+        placeholder="Search SKU, barcode, name, brand… [F2]"
+        className="h-12 rounded-xl pl-10 pr-28"
+        onChange={(event) => debounced.current(event.target.value)}
+      />
+      <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
+        <kbd className="hidden rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
+          F2
+        </kbd>
+        <Button variant="outline" size="sm" onClick={onScan}>
+          <ScanLine /> Scan
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function CategoryChips({
+  categories,
+  active,
+  total,
+  onChange,
+}: {
   categories: Array<{ id: number; name: string }>
-  brands: Array<{ id: number; name: string }>
-  onClose: () => void
+  active: string | null
+  total?: number
+  onChange: (value: string | null) => void
+}) {
+  const chip = (label: string, value: string | null, count?: number) => {
+    const isActive = active === value
+    return (
+      <button
+        key={value ?? 'all'}
+        type="button"
+        onClick={() => onChange(value)}
+        className={cn(
+          'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+          isActive
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-surface-elevated text-muted-foreground hover:text-foreground',
+        )}
+      >
+        {label}
+        {count !== undefined && (
+          <span
+            className={cn(
+              'rounded-full px-1.5 text-[10px] tabular-nums',
+              isActive ? 'bg-primary-foreground/20' : 'bg-muted',
+            )}
+          >
+            {count}
+          </span>
+        )}
+      </button>
+    )
+  }
+
+  return (
+    <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1">
+      {chip('All SKUs', null, total)}
+      {categories.map((category) => chip(category.name, category.name))}
+    </div>
+  )
+}
+
+function ProductCard({
+  product,
+  selected,
+  onToggle,
+  onEdit,
+  onStock,
+  onBarcodes,
+  onDelete,
+}: {
+  product: Product
+  selected: boolean
+  onToggle: () => void
+  onEdit: () => void
+  onStock: () => void
+  onBarcodes: () => void
+  onDelete: () => void
+}) {
+  const status = STOCK_META[product.stock_status ?? 'untracked'] ?? STOCK_META.untracked
+  const threshold = product.low_stock_threshold ?? null
+  const margin =
+    product.selling_price > 0
+      ? ((product.selling_price - product.cost_price) / product.selling_price) * 100
+      : null
+  const barcode = product.barcodes[0]
+
+  return (
+    <Card
+      className={cn(
+        'flex flex-col gap-3 p-4 transition-shadow hover:shadow-card-hover',
+        selected && 'ring-1 ring-primary/50',
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="relative shrink-0">
+          <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-lg border border-border/70 bg-surface text-lg font-semibold text-muted-foreground">
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt={product.name}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              product.name.charAt(0).toUpperCase()
+            )}
+          </div>
+          {product.requires_expiry && (
+            <span className="absolute -bottom-1 -right-1 rounded bg-surface-sunken p-0.5" title="Expiry tracked">
+              <Snowflake className="h-3.5 w-3.5 text-info" />
+            </span>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate font-mono text-[11px] text-primary">
+              {product.sku || `#${product.id}`}
+            </span>
+            <Badge variant={status.variant} className="shrink-0 gap-1">
+              <span className={cn('h-1.5 w-1.5 rounded-full', status.dot)} />
+              {status.label}
+            </Badge>
+          </div>
+          <p className="mt-0.5 truncate text-sm font-semibold text-foreground">{product.name}</p>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            {barcode && (
+              <>
+                <span className="truncate font-mono">EAN {barcode}</span>
+                <span>•</span>
+              </>
+            )}
+            <span className="truncate">
+              {product.category ?? 'Uncategorised'}
+              {product.brand ? ` · ${product.brand}` : ''}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onToggle}
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={`Select ${product.name}`}
+          className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {selected ? <CheckSquare className="h-5 w-5 text-primary" /> : <Square className="h-5 w-5" />}
+        </button>
+      </div>
+
+      <div className="rounded-lg bg-surface-sunken p-3">
+        {product.stock_tracked ? (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">
+                ON HAND:{' '}
+                <strong className="text-sm font-semibold text-foreground">
+                  {formatNumber(product.stock_qty ?? 0)} {product.unit ?? 'units'}
+                </strong>
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                Reorder: {threshold ?? '—'}
+              </span>
+            </div>
+            <StockBar qty={product.stock_qty ?? 0} threshold={threshold} />
+          </>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            No inventory records at this branch yet.
+          </p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-muted p-2 text-center">
+          <span className="block font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+            Retail
+          </span>
+          <span className="text-xs font-semibold text-foreground">
+            {formatCurrency(product.selling_price)}
+          </span>
+        </div>
+        <div className="rounded-lg bg-muted p-2 text-center">
+          <span className="block font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+            Cost
+          </span>
+          <span className="text-xs font-semibold text-foreground">
+            {formatCurrency(product.cost_price)}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-muted-foreground">
+          Tax: {product.tax_rate ? `${product.tax_rate}%` : '—'}
+          {product.has_variants ? ` · ${product.variants?.length ?? 0} variants` : ''}
+        </span>
+        {margin !== null && (
+          <span className={cn('font-semibold', margin >= 0 ? 'text-success' : 'text-destructive')}>
+            Margin: {margin.toFixed(1)}%
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5 border-t border-border/60 pt-3">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-9 gap-1 px-1 text-[11px]"
+          onClick={onEdit}
+        >
+          <Pencil /> Edit
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-9 gap-1 px-1 text-[11px]"
+          onClick={onStock}
+        >
+          <ArrowLeftRight /> Stock
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-9 gap-1 px-1 text-[11px]"
+          onClick={onBarcodes}
+        >
+          <Barcode /> Codes
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" size="sm" className="h-9 px-1 text-[11px]">
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onStock}>
+              <History className="h-4 w-4" />
+              Stock movements
+            </DropdownMenuItem>
+            {barcode && (
+              <DropdownMenuItem
+                onClick={() => {
+                  void navigator.clipboard?.writeText(barcode)
+                  toast.success('Barcode copied')
+                }}
+              >
+                <Barcode className="h-4 w-4" />
+                Copy barcode
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={onDelete}
+              className="!text-destructive focus:!bg-destructive/10 focus:!text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </Card>
+  )
+}
+
+function StockBar({ qty, threshold }: { qty: number; threshold: number | null }) {
+  const target = Math.max(threshold ?? 0, 1) * 2
+  const pct = Math.max(2, Math.min(100, Math.round((qty / target) * 100)))
+  const color =
+    qty <= 0 ? 'bg-destructive' : threshold !== null && qty <= threshold ? 'bg-warning' : 'bg-success'
+
+  return (
+    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <div className={cn('h-full', color)} style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+function TagPanel({
+  query,
+  title,
+  description,
+  variant,
+}: {
+  query: {
+    isLoading: boolean
+    isError: boolean
+    error: unknown
+    data?: { data: Array<{ id: number; name: string }> }
+    refetch: () => void
+  }
+  title: string
+  description: string
+  variant: 'secondary' | 'outline'
+}) {
+  if (query.isLoading) return <LoadingState rows={4} />
+  if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
+  const items = query.data?.data ?? []
+  if (items.length === 0) return <EmptyState title={title} description={description} />
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <Badge key={item.id} variant={variant} className="px-3 py-1.5 text-sm">
+          {item.name}
+        </Badge>
+      ))}
+    </div>
+  )
 }
 
 function ProductEditorDialog({
@@ -431,7 +1073,14 @@ function ProductEditorDialog({
   categories,
   brands,
   onClose,
-}: ProductEditorDialogProps) {
+}: {
+  product: Product | null
+  form: ProductFormState
+  onChange: (form: ProductFormState) => void
+  categories: Array<{ id: number; name: string }>
+  brands: Array<{ id: number; name: string }>
+  onClose: () => void
+}) {
   const queryClient = useQueryClient()
   const set = (patch: Partial<ProductFormState>) => onChange({ ...form, ...patch })
 
@@ -724,7 +1373,11 @@ function BarcodesDialog({ product, onClose }: { product: Product; onClose: () =>
               }}
             />
             <Button size="icon" onClick={submit} disabled={add.isPending || !barcode.trim()}>
-              {add.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {add.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>

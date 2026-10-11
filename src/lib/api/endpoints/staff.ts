@@ -29,6 +29,73 @@ export interface StaffInput {
   phone?: string
   roles?: string[]
   branch_ids?: number[]
+  is_active?: boolean
+}
+
+export interface StaffCapabilities {
+  credit: boolean
+  discount: boolean
+  refund: boolean
+  reconcile: boolean
+  approve: boolean
+}
+
+export interface StaffShiftInfo {
+  id: number
+  branch_id: number
+  branch_name: string | null
+  opened_at: string | null
+  opening_cash: number
+  expected_cash: number
+}
+
+export interface StaffSummaryMember extends StaffMember {
+  employee_code: string
+  tier: string
+  branch_names: string[]
+  on_duty: boolean
+  is_cashier: boolean
+  is_inventory_lead: boolean
+  is_supervisor: boolean
+  shift: StaffShiftInfo | null
+  sales_today: number
+  orders_today: number
+  permissions_count: number
+  can: StaffCapabilities
+}
+
+export interface StaffSummary {
+  business_id: number
+  currency: string
+  staff: {
+    total: number
+    active: number
+    on_duty: number
+    off_duty: number
+  }
+  tills: {
+    open: number
+    branches: number
+  }
+  shift_gmv: {
+    value: number
+    orders: number
+    average: number
+  }
+  drawer: {
+    accuracy_pct: number
+    variance: number
+    audits: number
+  }
+  filters: {
+    all: number
+    on_duty: number
+    cashiers: number
+    inventory: number
+    supervisors: number
+    off_duty: number
+  }
+  members: StaffSummaryMember[]
 }
 
 export interface ActivityLog {
@@ -73,6 +140,8 @@ export interface SyncPermissionsResult {
 export const staffApi = {
   list: (params?: { page?: number; per_page?: number; search?: string }) =>
     http.get<Paginated<StaffMember>>('/staff', { params }),
+
+  summary: () => http.get<ApiEnvelope<StaffSummary>>('/staff/summary'),
 
   get: (id: number) => http.get<ApiEnvelope<StaffMember>>(`/staff/${id}`),
 

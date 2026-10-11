@@ -48,8 +48,11 @@ export const reportsApi = {
     http.get<ApiEnvelope<ReportDataset>>('/reports', { params }),
 
   export: (format: ExportFormat, params: ReportParams) =>
-    http.get<ApiEnvelope<{ url: string; filename: string }>>(`/reports/export/${format}`, {
-      params,
-      responseType: 'text',
-    }),
+    http.get<ApiEnvelope<{ url: string; filename: string; format: ExportFormat; title: string }>>(
+      `/reports/export/${format}`,
+      {
+        params,
+        responseType: 'text',
+      },
+    ),
 }

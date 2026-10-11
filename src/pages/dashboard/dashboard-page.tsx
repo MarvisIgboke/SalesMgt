@@ -37,6 +37,7 @@ import { shiftApi } from '@/lib/api/endpoints/shifts'
 import { useAppStore } from '@/stores/app'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { toast } from '@/components/ui/sonner'
 import { StatusBadge } from '@/components/common/status-badge'
 import { SectionCard } from '@/components/common/section-card'
 import { LoadingState } from '@/components/common/loading-state'
@@ -99,6 +100,24 @@ export function DashboardPage() {
 
   const isCustom = period === 'custom'
   const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? 'Today'
+
+  const handleFromChange = (value: string) => {
+    if (value === '') return
+    if (customTo && value > customTo) {
+      setCustomTo(value)
+      toast.info('End date moved forward to keep the range valid.')
+    }
+    setCustomFrom(value)
+  }
+
+  const handleToChange = (value: string) => {
+    if (value === '') return
+    if (customFrom && value < customFrom) {
+      setCustomFrom(value)
+      toast.info('Start date moved back to keep the range valid.')
+    }
+    setCustomTo(value)
+  }
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard', branchId, period, isCustom ? customFrom : null, isCustom ? customTo : null],
@@ -215,14 +234,14 @@ export function DashboardPage() {
         </div>
 
         {isCustom && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-surface p-2.5">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-surface p-2.5">
             <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               From
               <input
                 type="date"
                 value={customFrom}
                 max={customTo}
-                onChange={(e) => setCustomFrom(e.target.value)}
+                onChange={(e) => handleFromChange(e.target.value)}
                 className="rounded-md border border-border bg-background px-2 py-1 font-mono text-xs text-foreground focus:border-primary focus:outline-none"
               />
             </label>
@@ -232,10 +251,13 @@ export function DashboardPage() {
                 type="date"
                 value={customTo}
                 min={customFrom}
-                onChange={(e) => setCustomTo(e.target.value)}
+                onChange={(e) => handleToChange(e.target.value)}
                 className="rounded-md border border-border bg-background px-2 py-1 font-mono text-xs text-foreground focus:border-primary focus:outline-none"
               />
             </label>
+            <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+              {customFrom} → {customTo}
+            </span>
           </div>
         )}
       </div>

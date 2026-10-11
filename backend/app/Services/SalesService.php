@@ -24,9 +24,60 @@ class SalesService
 
     public function index(array $filters, int $perPage): LengthAwarePaginator
     {
-        $query = Sale::query()->with(['customer', 'branch', 'user', 'payments']);
+        $paginator = $this->filteredQuery($filters)->orderByDesc('id')->paginate($perPage);
 
-        $query
+        $paginator->setCollection(
+            collect($paginator->items())->map(fn (Sale $sale) => $this->present($sale)),
+        );
+
+        return $paginator;
+    }
+
+    public function summary(array $filters): array
+    {
+        $query = $this->filteredQuery($filters);
+
+        $count = (clone $query)->count();
+        $gross = (float) (clone $query)->sum('total');
+
+        $voidCount = (clone $query)
+            ->whereIn('status', ['refunded', 'partially_refunded', 'cancelled'])
+            ->count();
+
+        $cancelledAmount = (float) (clone $query)->where('status', 'cancelled')->sum('total');
+        $refundedAmount = (float) Refund::query()
+            ->where('status', 'completed')
+            ->whereIn('sale_id', (clone $query)->select('sales.id')->getQuery())
+            ->sum('total');
+        $voidAmount = $cancelledAmount + $refundedAmount;
+
+        $tenders = (clone $query)
+            ->setEagerLoads([])
+            ->join('payments', 'sales.id', '=', 'payments.sale_id')
+            ->selectRaw('payments.method as method, SUM(payments.amount) as amount')
+            ->groupBy('payments.method')
+            ->get()
+            ->map(fn ($row) => [
+                'method' => $row->method,
+                'amount' => round((float) $row->amount, 2),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'gross_total' => round($gross, 2),
+            'count' => $count,
+            'avg_total' => $count > 0 ? round($gross / $count, 2) : 0,
+            'void_count' => $voidCount,
+            'void_amount' => round($voidAmount, 2),
+            'tenders' => $tenders,
+        ];
+    }
+
+    private function filteredQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        return Sale::query()
+            ->with(['customer', 'branch', 'user', 'payments'])
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['payment_status'] ?? null, fn ($q, $v) => $q->where('payment_status', $v))
             ->when($filters['customer_id'] ?? null, fn ($q, $v) => $q->where('customer_id', (int) $v))
@@ -40,14 +91,6 @@ class SalesService
                 $like = '%'.$v.'%';
                 $q->where('reference', 'like', $like);
             });
-
-        $paginator = $query->orderByDesc('id')->paginate($perPage);
-
-        $paginator->setCollection(
-            collect($paginator->items())->map(fn (Sale $sale) => $this->present($sale)),
-        );
-
-        return $paginator;
     }
 
     public function present(Sale $sale, bool $detailed = false): array

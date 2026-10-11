@@ -28,15 +28,52 @@ export interface ExpenseCategory {
   name: string
 }
 
+export interface CategoryTotal {
+  category: string
+  total: number
+}
+
+export interface CategoryCount {
+  category: string
+  count: number
+}
+
+export interface ExpenseSummary {
+  total: number
+  by_category: CategoryTotal[]
+  pending_count: number
+  pending_value: number
+  period: {
+    submitted_count: number
+    submitted_value: number
+    approved_count: number
+    approved_value: number
+    rejected_count: number
+    rejected_value: number
+  }
+  status_counts: {
+    all: number
+    pending: number
+    approved: number
+    rejected: number
+    awaiting_approval: number
+  }
+  category_counts: CategoryCount[]
+  business_id?: number
+}
+
 export const expensesApi = {
   dashboard: (params?: { branch_id?: number; period?: string }) =>
-    http.get<ApiEnvelope<{ total: number; by_category: unknown[]; pending_count: number }>>(
-      '/expenses/dashboard',
-      { params },
-    ),
+    http.get<ApiEnvelope<ExpenseSummary>>('/expenses/dashboard', { params }),
 
-  list: (params?: { page?: number; per_page?: number; status?: string; branch_id?: number }) =>
-    http.get<Paginated<Expense>>('/expenses', { params }),
+  list: (params?: {
+    page?: number
+    per_page?: number
+    status?: string
+    category?: string
+    search?: string
+    branch_id?: number
+  }) => http.get<Paginated<Expense>>('/expenses', { params }),
 
   create: (input: ExpenseInput) => http.post<ApiEnvelope<Expense>>('/expenses', input),
 

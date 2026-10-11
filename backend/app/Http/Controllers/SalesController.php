@@ -21,7 +21,10 @@ class SalesController extends Controller
 
         $paginator = $this->sales->index($filters, $this->perPage($request));
 
-        return ApiResponse::paginator($paginator);
+        return ApiResponse::paginator(
+            $paginator,
+            extra: ['summary' => $this->sales->summary($filters)],
+        );
     }
 
     public function show(Request $request, int $sale)

@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\GoodsReceipt;
 use App\Models\InventoryBalance;
 use App\Models\InventoryTransaction;
+use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\StockBatch;
 use App\Models\StockTransfer;
@@ -80,7 +81,7 @@ class InventoryController extends Controller
             ->select('inventory_balances.*')
             ->leftJoin('products', 'products.id', '=', 'inventory_balances.product_id')
             ->leftJoin('product_variants', 'product_variants.id', '=', 'inventory_balances.variant_id')
-            ->with(['product', 'variant', 'branch'])
+            ->with(['product.category', 'product.brand', 'product.unit', 'product.barcodes', 'variant', 'branch'])
             ->when($branchId !== null, fn ($q) => $q->where('inventory_balances.branch_id', $branchId))
             ->when($request->filled('product_id'), fn ($q) => $q->where('inventory_balances.product_id', (int) $request->query('product_id')));
 
@@ -114,6 +115,12 @@ class InventoryController extends Controller
             ->with(['product', 'variant', 'user'])
             ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->when($request->filled('type'), fn ($q) => $q->where('type', $request->query('type')))
+            ->when($request->filled('types'), function ($q) use ($request) {
+                $types = array_values(array_filter(explode(',', (string) $request->query('types'))));
+                if ($types !== []) {
+                    $q->whereIn('type', $types);
+                }
+            })
             ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', (int) $request->query('product_id')))
             ->when($request->filled('variant_id'), fn ($q) => $q->where('variant_id', (int) $request->query('variant_id')))
             ->orderByDesc('happened_at')
@@ -121,6 +128,120 @@ class InventoryController extends Controller
             ->paginate($this->perPage($request));
 
         return ApiResponse::paginator($paginator, map: fn (InventoryTransaction $tx) => $this->presentMovement($tx));
+    }
+
+    public function trace(Request $request, int $product)
+    {
+        $this->authorize($request, ['inventory.view']);
+
+        $branchId = $this->branchId($request);
+
+        $record = Product::query()
+            ->with(['category', 'brand', 'unit', 'barcodes'])
+            ->findOrFail($product);
+
+        $onHand = (float) InventoryBalance::query()
+            ->where('product_id', $record->id)
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
+            ->sum('quantity');
+
+        $aggregate = InventoryTransaction::query()
+            ->where('product_id', $record->id)
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END), 0) AS intake,
+                COALESCE(SUM(CASE WHEN quantity < 0 AND type IN ('out', 'transfer_out') THEN -quantity ELSE 0 END), 0) AS dispensed,
+                COALESCE(SUM(CASE WHEN type = 'adjustment' THEN quantity ELSE 0 END), 0) AS adjustments,
+                COALESCE(SUM(CASE WHEN type = 'damage' THEN -quantity ELSE 0 END), 0) AS damaged,
+                COALESCE(SUM(CASE WHEN type = 'expired' THEN -quantity ELSE 0 END), 0) AS expired,
+                COUNT(*) AS events,
+                MIN(happened_at) AS first_event,
+                MAX(happened_at) AS last_event
+            ")
+            ->first();
+
+        $intake = (float) ($aggregate->intake ?? 0);
+        $dispensed = (float) ($aggregate->dispensed ?? 0);
+
+        $activeBatch = StockBatch::query()
+            ->where('product_id', $record->id)
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
+            ->where('quantity_available', '>', 0)
+            ->orderByRaw('expiry_date IS NULL, expiry_date asc')
+            ->orderBy('id')
+            ->first();
+
+        $zones = InventoryBalance::query()
+            ->selectRaw('branch_id, SUM(quantity) AS quantity')
+            ->where('product_id', $record->id)
+            ->groupBy('branch_id')
+            ->with('branch:id,name')
+            ->get()
+            ->map(fn (InventoryBalance $balance) => [
+                'branch_id' => $balance->branch_id,
+                'branch_name' => $balance->branch?->name,
+                'quantity' => (float) $balance->quantity,
+            ])
+            ->filter(fn (array $zone) => abs($zone['quantity']) > 0.0001)
+            ->sortByDesc('quantity')
+            ->values()
+            ->all();
+
+        $quarantine = (float) StockBatch::query()
+            ->where('product_id', $record->id)
+            ->whereIn('status', ['damaged', 'expired'])
+            ->sum('quantity_available');
+
+        $lastReceipt = GoodsReceipt::query()
+            ->with(['supplier:id,name'])
+            ->whereHas('items', fn ($q) => $q->where('product_id', $record->id))
+            ->orderByDesc('id')
+            ->first();
+
+        $unitCost = (float) ($record->cost_price ?? 0);
+
+        return ApiResponse::success([
+            'product' => [
+                'id' => $record->id,
+                'name' => $record->name,
+                'sku' => $record->sku ?? '',
+                'barcode' => $record->barcodes->first()?->barcode,
+                'category' => $record->category?->name,
+                'brand' => $record->brand?->name,
+                'unit' => $record->unit?->name,
+                'image_url' => $record->image_url,
+                'requires_expiry' => (bool) $record->requires_expiry,
+                'cost_price' => $unitCost,
+                'selling_price' => (float) ($record->selling_price ?? 0),
+            ],
+            'branch' => null,
+            'on_hand' => round($onHand, 3),
+            'on_hand_value' => round($onHand * $unitCost, 2),
+            'threshold' => $record->low_stock_threshold === null ? null : (float) $record->low_stock_threshold,
+            'intake' => round($intake, 3),
+            'dispensed' => round($dispensed, 3),
+            'adjustments' => round((float) ($aggregate->adjustments ?? 0), 3),
+            'damaged' => round((float) ($aggregate->damaged ?? 0), 3),
+            'expired' => round((float) ($aggregate->expired ?? 0), 3),
+            'events' => (int) ($aggregate->events ?? 0),
+            'sold_ratio' => $intake > 0 ? round(($dispensed / $intake) * 100, 1) : 0.0,
+            'first_event_at' => $aggregate?->first_event !== null ? Carbon::parse($aggregate->first_event)->toIso8601String() : null,
+            'last_event_at' => $aggregate?->last_event !== null ? Carbon::parse($aggregate->last_event)->toIso8601String() : null,
+            'active_batch' => $activeBatch === null ? null : [
+                'batch_number' => $activeBatch->batch_number,
+                'expiry_date' => $activeBatch->expiry_date?->toDateString(),
+                'quantity_available' => (float) $activeBatch->quantity_available,
+                'days_remaining' => $activeBatch->daysRemaining(),
+                'expiry_status' => $activeBatch->expiryStatus(),
+            ],
+            'zones' => $zones,
+            'quarantine' => round($quarantine, 3),
+            'last_receipt' => $lastReceipt === null ? null : [
+                'reference' => $lastReceipt->reference,
+                'supplier_name' => $lastReceipt->supplier?->name,
+                'created_at' => $lastReceipt->created_at?->toIso8601String(),
+            ],
+        ]);
     }
 
     public function adjust(Request $request)
@@ -340,6 +461,90 @@ class InventoryController extends Controller
         ]);
     }
 
+    public function batches(Request $request)
+    {
+        $this->authorize($request, ['inventory.view']);
+
+        $branchId = $this->branchId($request);
+        $today = now()->startOfDay();
+
+        $scoped = fn () => StockBatch::query()
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId));
+
+        $summary = [
+            'expired' => ['count' => 0, 'quantity' => 0.0, 'value' => 0.0],
+            'critical' => ['count' => 0, 'quantity' => 0.0, 'value' => 0.0],
+            'near' => ['count' => 0, 'quantity' => 0.0, 'value' => 0.0],
+            'at_risk' => ['count' => 0, 'quantity' => 0.0, 'value' => 0.0],
+            'stable' => ['count' => 0, 'quantity' => 0.0, 'value' => 0.0],
+        ];
+        $totalQuantity = 0.0;
+        $totalValue = 0.0;
+
+        $scoped()
+            ->whereNotNull('expiry_date')
+            ->where('quantity_available', '>', 0)
+            ->select('id', 'quantity_available', 'cost_price', 'expiry_date')
+            ->chunkById(500, function ($chunk) use (&$summary, &$totalQuantity, &$totalValue, $today) {
+                foreach ($chunk as $batch) {
+                    $days = $today->diffInDays($batch->expiry_date->startOfDay(), false);
+                    $bucket = match (true) {
+                        $days < 0 => 'expired',
+                        $days <= 7 => 'critical',
+                        $days <= 30 => 'near',
+                        $days <= 90 => 'at_risk',
+                        default => 'stable',
+                    };
+                    $quantity = (float) $batch->quantity_available;
+                    $value = $quantity * (float) $batch->cost_price;
+                    $summary[$bucket]['count']++;
+                    $summary[$bucket]['quantity'] += $quantity;
+                    $summary[$bucket]['value'] += $value;
+                    $totalQuantity += $quantity;
+                    $totalValue += $value;
+                }
+            });
+
+        foreach ($summary as $key => $bucket) {
+            $summary[$key]['quantity'] = round($bucket['quantity'], 3);
+            $summary[$key]['value'] = round($bucket['value'], 2);
+        }
+
+        $summary['all'] = [
+            'count' => array_sum(array_column($summary, 'count')),
+            'quantity' => round($totalQuantity, 3),
+            'value' => round($totalValue, 2),
+        ];
+
+        $query = StockBatch::query()
+            ->with(['product:id,name,sku', 'product.barcodes', 'variant:id,name,sku', 'branch:id,name', 'supplier:id,name'])
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
+            ->whereNotNull('expiry_date')
+            ->where('quantity_available', '>', 0)
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = '%'.$request->string('search').'%';
+                $q->where(fn ($w) => $w->where('batch_number', 'like', $term)
+                    ->orWhereHas('product', fn ($p) => $p->where('name', 'like', $term)->orWhere('sku', 'like', $term)));
+            });
+
+        match ($request->query('bucket')) {
+            'expired' => $query->whereDate('expiry_date', '<', $today),
+            'critical' => $query->whereDate('expiry_date', '>=', $today)->whereDate('expiry_date', '<=', $today->copy()->addDays(7)),
+            'near' => $query->whereDate('expiry_date', '>', $today->copy()->addDays(7))->whereDate('expiry_date', '<=', $today->copy()->addDays(30)),
+            'at_risk' => $query->whereDate('expiry_date', '>', $today->copy()->addDays(30))->whereDate('expiry_date', '<=', $today->copy()->addDays(90)),
+            'stable' => $query->whereDate('expiry_date', '>', $today->copy()->addDays(90)),
+            default => null,
+        };
+
+        $paginator = $query->orderBy('expiry_date')->orderBy('id')->paginate($this->perPage($request));
+
+        return ApiResponse::paginator(
+            $paginator,
+            map: fn (StockBatch $batch) => $this->presentBatch($batch),
+            extra: ['summary' => $summary],
+        );
+    }
+
     public function approvals(Request $request)
     {
         $this->authorize($request, ['inventory.approve', 'inventory.view']);
@@ -391,18 +596,32 @@ class InventoryController extends Controller
             default => 'in_stock',
         };
 
+        $product = $balance->product;
+        $variant = $balance->variant;
+        $unitCost = (float) ($variant?->cost_price ?? $product?->cost_price ?? 0);
+        $unitPrice = (float) ($variant?->selling_price ?? $product?->selling_price ?? 0);
+
         return [
             'id' => $balance->id,
             'product_id' => $balance->product_id,
             'variant_id' => $balance->variant_id,
-            'product_name' => $balance->product?->name,
-            'variant_name' => $balance->variant?->name,
-            'sku' => $balance->variant?->sku ?? $balance->product?->sku,
+            'product_name' => $product?->name,
+            'variant_name' => $variant?->name,
+            'sku' => $variant?->sku ?? $product?->sku,
             'branch_id' => $balance->branch_id,
             'branch_name' => $balance->branch?->name,
             'quantity' => $quantity,
             'low_stock_threshold' => $threshold,
             'status' => $status,
+            'barcode' => $product?->barcodes?->first()?->barcode,
+            'category' => $product?->category?->name,
+            'brand' => $product?->brand?->name,
+            'unit' => $product?->unit?->name,
+            'image_url' => $product?->image_url,
+            'requires_expiry' => (bool) ($product?->requires_expiry ?? false),
+            'cost_price' => $unitCost,
+            'selling_price' => $unitPrice,
+            'valuation' => round($quantity * $unitCost, 2),
         ];
     }
 
@@ -421,6 +640,41 @@ class InventoryController extends Controller
             'reference' => $tx->reference,
             'staff_name' => $tx->user?->name,
             'happened_at' => $tx->happened_at?->toIso8601String(),
+        ];
+    }
+
+    private function presentBatch(StockBatch $batch): array
+    {
+        $days = $batch->daysRemaining();
+        $bucket = match (true) {
+            $days === null => 'stable',
+            $days < 0 => 'expired',
+            $days <= 7 => 'critical',
+            $days <= 30 => 'near',
+            $days <= 90 => 'at_risk',
+            default => 'stable',
+        };
+
+        return [
+            'id' => $batch->id,
+            'product_id' => $batch->product_id,
+            'product_name' => $batch->product?->name,
+            'variant_name' => $batch->variant?->name,
+            'sku' => $batch->variant?->sku ?? $batch->product?->sku,
+            'barcode' => $batch->product?->barcodes?->first()?->barcode,
+            'batch_number' => $batch->batch_number,
+            'branch_id' => $batch->branch_id,
+            'branch_name' => $batch->branch?->name,
+            'supplier_name' => $batch->supplier?->name,
+            'quantity_available' => (float) $batch->quantity_available,
+            'quantity_received' => (float) $batch->quantity_received,
+            'cost_price' => (float) $batch->cost_price,
+            'value' => round((float) $batch->quantity_available * (float) $batch->cost_price, 2),
+            'expiry_date' => $batch->expiry_date?->toDateString(),
+            'manufacturing_date' => $batch->manufacturing_date?->toDateString(),
+            'days_remaining' => $days,
+            'expiry_status' => $batch->expiryStatus(),
+            'bucket' => $bucket,
         ];
     }
 

@@ -54,6 +54,7 @@ final class ApiResponse
         LengthAwarePaginator $paginator,
         ?string $message = null,
         ?callable $map = null,
+        array $extra = [],
     ): array {
         $items = $paginator->getCollection()->all();
 
@@ -64,14 +65,14 @@ final class ApiResponse
         $payload = [
             'success' => true,
             'data' => array_values($items),
-            'meta' => [
+            'meta' => array_merge([
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
                 'from' => $paginator->firstItem(),
                 'to' => $paginator->lastItem(),
-            ],
+            ], $extra),
             'links' => [
                 'first' => $paginator->url(1),
                 'last' => $paginator->url($paginator->lastPage()),

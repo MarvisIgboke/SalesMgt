@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
+use App\Models\User;
 use App\Models\Wallet;
 use App\Services\BusinessContextService;
 use App\Support\ApiResponse;
@@ -14,6 +15,7 @@ use App\Support\Presenter;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class BusinessController extends Controller
@@ -34,20 +36,202 @@ class BusinessController extends Controller
     public function branches(Request $request)
     {
         $perPage = $this->perPage($request);
+        $user = $request->user();
 
-        $paginator = Branch::query()
-            ->when($request->user()->branch_ids, fn ($q, $ids) => $q->whereIn('id', $ids))
-            ->orderBy('name')
-            ->paginate($perPage);
+        if ($user->isSuperAdmin()) {
+            $businessId = $request->query('business_id');
+            $query = Branch::withoutGlobalScope('tenant-business')
+                ->where('business_id', $businessId !== null ? (int) $businessId : TenantContext::businessId());
+        } else {
+            $query = Branch::query()
+                ->when($user->branch_ids, fn ($q, $ids) => $q->whereIn('id', $ids));
+        }
+
+        $paginator = $query->orderBy('name')->paginate($perPage);
 
         return ApiResponse::paginator($paginator, map: fn (Branch $branch) => Presenter::branch($branch));
     }
 
+    /**
+     * Network-wide telemetry for the multi-store branches dashboard: headline
+     * KPIs plus a per-branch metric matrix (today's sales, stock value, tills).
+     */
+    public function branchesSummary(Request $request)
+    {
+        $user = $request->user();
+        abort_unless($user->can('staff.view') || $user->can('staff.edit') || $user->isSuperAdmin(), 403);
+
+        if ($user->isSuperAdmin()) {
+            $businessId = (int) ($request->query('business_id') ?? TenantContext::businessId());
+            $branches = Branch::withoutGlobalScope('tenant-business')
+                ->where('business_id', $businessId)
+                ->orderBy('name')
+                ->get();
+        } else {
+            $branches = Branch::query()
+                ->when($user->branch_ids, fn ($q, $ids) => $q->whereIn('id', $ids))
+                ->orderBy('name')
+                ->get();
+            $businessId = (int) ($branches->first()->business_id ?? TenantContext::businessId());
+        }
+
+        $branchIds = $branches->pluck('id')->all();
+        $currency = Business::query()->whereKey($businessId)->value('currency') ?? 'NGN';
+
+        $since = now()->subDay();
+        $todayStart = now()->startOfDay();
+
+        $gmv = $branchIds === [] ? null : DB::table('sales')
+            ->where('business_id', $businessId)
+            ->whereIn('branch_id', $branchIds)
+            ->whereIn('status', ['completed', 'partially_refunded'])
+            ->where('created_at', '>=', $since)
+            ->selectRaw('COALESCE(SUM(total), 0) AS value, COUNT(*) AS orders')
+            ->first();
+
+        $openTills = $branchIds === [] ? 0 : (int) DB::table('shifts')
+            ->where('business_id', $businessId)
+            ->whereIn('branch_id', $branchIds)
+            ->where('status', 'open')
+            ->count();
+
+        $tillVariance = $branchIds === [] ? 0.0 : (float) DB::table('shifts')
+            ->where('business_id', $businessId)
+            ->whereIn('branch_id', $branchIds)
+            ->where('status', 'closed')
+            ->where('closed_at', '>=', $since)
+            ->sum('variance');
+
+        $inventory = $branchIds === [] ? null : DB::table('inventory_balances')
+            ->leftJoin('products', 'products.id', '=', 'inventory_balances.product_id')
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'inventory_balances.variant_id')
+            ->where('inventory_balances.business_id', $businessId)
+            ->whereIn('inventory_balances.branch_id', $branchIds)
+            ->selectRaw('COUNT(*) AS skus, COALESCE(SUM(CASE WHEN inventory_balances.quantity > 0 THEN 1 ELSE 0 END), 0) AS in_stock, COALESCE(SUM(inventory_balances.quantity * COALESCE(product_variants.cost_price, products.cost_price, 0)), 0) AS value')
+            ->first();
+
+        $todaySales = $branchIds === [] ? collect() : DB::table('sales')
+            ->where('business_id', $businessId)
+            ->whereIn('branch_id', $branchIds)
+            ->whereIn('status', ['completed', 'partially_refunded'])
+            ->where('created_at', '>=', $todayStart)
+            ->groupBy('branch_id')
+            ->selectRaw('branch_id, COALESCE(SUM(total), 0) AS value, COUNT(*) AS orders')
+            ->get()
+            ->keyBy('branch_id');
+
+        $stockByBranch = $branchIds === [] ? collect() : DB::table('inventory_balances')
+            ->leftJoin('products', 'products.id', '=', 'inventory_balances.product_id')
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'inventory_balances.variant_id')
+            ->where('inventory_balances.business_id', $businessId)
+            ->whereIn('inventory_balances.branch_id', $branchIds)
+            ->groupBy('inventory_balances.branch_id')
+            ->selectRaw('inventory_balances.branch_id AS branch_id, COUNT(*) AS skus, COALESCE(SUM(inventory_balances.quantity * COALESCE(product_variants.cost_price, products.cost_price, 0)), 0) AS value')
+            ->get()
+            ->keyBy('branch_id');
+
+        $tillsByBranch = $branchIds === [] ? collect() : DB::table('shifts')
+            ->where('business_id', $businessId)
+            ->whereIn('branch_id', $branchIds)
+            ->where('status', 'open')
+            ->groupBy('branch_id')
+            ->selectRaw('branch_id, COUNT(*) AS open_count')
+            ->get()
+            ->keyBy('branch_id');
+
+        $varianceByBranch = $branchIds === [] ? collect() : DB::table('shifts')
+            ->where('business_id', $businessId)
+            ->whereIn('branch_id', $branchIds)
+            ->where('status', 'closed')
+            ->where('closed_at', '>=', $since)
+            ->groupBy('branch_id')
+            ->selectRaw('branch_id, COALESCE(SUM(variance), 0) AS variance')
+            ->get()
+            ->keyBy('branch_id');
+
+        $managerByBranch = $this->managersByBranch($businessId);
+
+        $cards = $branches->map(function (Branch $branch) use ($managerByBranch, $todaySales, $stockByBranch, $tillsByBranch, $varianceByBranch) {
+            $node = Presenter::branch($branch);
+            $node['manager'] = $managerByBranch[$branch->id] ?? null;
+            $node['today_sales'] = (float) ($todaySales[$branch->id]->value ?? 0);
+            $node['today_orders'] = (int) ($todaySales[$branch->id]->orders ?? 0);
+            $node['stock_value'] = (float) ($stockByBranch[$branch->id]->value ?? 0);
+            $node['stock_skus'] = (int) ($stockByBranch[$branch->id]->skus ?? 0);
+            $node['open_tills'] = (int) ($tillsByBranch[$branch->id]->open_count ?? 0);
+            $node['variance'] = (float) ($varianceByBranch[$branch->id]->variance ?? 0);
+
+            return $node;
+        })->values()->all();
+
+        $byType = $branches
+            ->groupBy(fn (Branch $branch) => $branch->type ?: 'Unclassified')
+            ->map(fn ($group, $type) => ['type' => $type, 'count' => $group->count()])
+            ->sortByDesc('count')
+            ->values()
+            ->all();
+
+        $gmvValue = (float) ($gmv->value ?? 0);
+        $gmvOrders = (int) ($gmv->orders ?? 0);
+        $inventorySkus = (int) ($inventory->skus ?? 0);
+        $inventoryInStock = (int) ($inventory->in_stock ?? 0);
+
+        return ApiResponse::success([
+            'business_id' => $businessId,
+            'currency' => $currency,
+            'nodes' => [
+                'total' => $branches->count(),
+                'active' => $branches->where('is_active', true)->count(),
+                'inactive' => $branches->where('is_active', false)->count(),
+                'by_type' => $byType,
+            ],
+            'gmv_24h' => [
+                'value' => $gmvValue,
+                'orders' => $gmvOrders,
+                'average' => $gmvOrders > 0 ? round($gmvValue / $gmvOrders, 2) : 0.0,
+            ],
+            'registers' => [
+                'open' => $openTills,
+                'variance' => round($tillVariance, 2),
+                'branches' => $tillsByBranch->count(),
+            ],
+            'inventory' => [
+                'value' => round((float) ($inventory->value ?? 0), 2),
+                'skus' => $inventorySkus,
+                'in_stock_pct' => $inventorySkus > 0 ? round(($inventoryInStock / $inventorySkus) * 100, 1) : 0.0,
+            ],
+            'branches' => $cards,
+        ]);
+    }
+
+    /**
+     * Resolve a display manager per branch from the users assigned to each branch.
+     *
+     * @return array<int, string>
+     */
+    private function managersByBranch(int $businessId): array
+    {
+        $assignments = [];
+
+        foreach (User::query()->where('business_id', $businessId)->get(['id', 'name', 'branch_ids']) as $user) {
+            foreach ($user->branch_ids ?? [] as $branchId) {
+                $branchId = (int) $branchId;
+                if ($branchId !== 0 && ! isset($assignments[$branchId])) {
+                    $assignments[$branchId] = $user->name;
+                }
+            }
+        }
+
+        return $assignments;
+    }
+
     public function storeBranch(Request $request)
     {
-        abort_unless($request->user()->can('staff.edit') || $request->user()->isSuperAdmin(), 403);
+        $user = $request->user();
+        abort_unless($user->can('staff.edit') || $user->isSuperAdmin(), 403);
 
         $data = $request->validate([
+            'business_id' => ['nullable', 'integer'],
             'name' => ['required', 'string', 'max:255'],
             'code' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
@@ -56,8 +240,24 @@ class BusinessController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
 
+        $targetBusinessId = TenantContext::businessId();
+
+        if (! empty($data['business_id'])) {
+            $requested = (int) $data['business_id'];
+
+            if ($requested !== $targetBusinessId) {
+                abort_unless($user->isSuperAdmin(), 403);
+                abort_unless(
+                    Business::query()->whereKey($requested)->exists(),
+                    422,
+                    'The selected business does not exist.',
+                );
+                $targetBusinessId = $requested;
+            }
+        }
+
         $branch = Branch::create([
-            'business_id' => TenantContext::businessId(),
+            'business_id' => $targetBusinessId,
             'name' => $data['name'],
             'code' => $data['code'] ?? null,
             'address' => $data['address'] ?? null,
@@ -74,7 +274,7 @@ class BusinessController extends Controller
     {
         abort_unless($request->user()->can('staff.edit') || $request->user()->isSuperAdmin(), 403);
 
-        $branch = Branch::query()->findOrFail($branch);
+        $record = $this->findBranchForUser($request, $branch);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'code' => ['nullable', 'string', 'max:50'],
@@ -84,17 +284,17 @@ class BusinessController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
 
-        $branch->update($data);
+        $record->update($data);
 
-        return ApiResponse::success(Presenter::branch($branch), 'Branch updated.');
+        return ApiResponse::success(Presenter::branch($record), 'Branch updated.');
     }
 
     public function destroyBranch(Request $request, int $branch)
     {
         abort_unless($request->user()->isSuperAdmin(), 403);
 
-        $branch = Branch::query()->findOrFail($branch);
-        $branch->delete();
+        $record = $this->findBranchForUser($request, $branch);
+        $record->delete();
 
         return ApiResponse::success(null, 'Branch deleted.');
     }
@@ -152,7 +352,7 @@ class BusinessController extends Controller
         }
 
         if (! Subscription::withoutGlobalScope('tenant-business')->where('business_id', $business->id)->exists()) {
-            $plan = SubscriptionPlan::find($data['plan_id']) ?? SubscriptionPlan::where('slug', 'starter')->first();
+            $plan = SubscriptionPlan::find($data['plan_id'] ?? null) ?? SubscriptionPlan::where('slug', 'starter')->first();
             if ($plan) {
                 Subscription::create([
                     'business_id' => $business->id,
@@ -233,6 +433,15 @@ class BusinessController extends Controller
             $this->context->context($branchId, false),
             $branchId === null ? 'Viewing all branches.' : 'Branch switched.',
         );
+    }
+
+    private function findBranchForUser(Request $request, int $branchId): Branch
+    {
+        $query = $request->user()->isSuperAdmin()
+            ? Branch::withoutGlobalScope('tenant-business')
+            : Branch::query();
+
+        return $query->findOrFail($branchId);
     }
 
     private function perPage(Request $request): int

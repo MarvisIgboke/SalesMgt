@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
+use App\Models\SupplierInvoice;
 use App\Models\SupplierPayment;
 use App\Models\AuditLog;
 use App\Support\ApiResponse;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class SupplierController extends Controller
 {
@@ -27,10 +29,78 @@ class SupplierController extends Controller
                     ->orWhere('contact_name', 'like', $term)
                     ->orWhere('phone', 'like', $term));
             })
+            ->when($request->filled('filter'), function ($query) use ($request) {
+                match ($request->query('filter')) {
+                    'balance' => $query->whereHas('account', fn ($a) => $a->where('balance', '>', 0)),
+                    'clear' => $query->whereHas('account', fn ($a) => $a->where('balance', '<=', 0)),
+                    'active' => $query->whereHas('purchaseOrders'),
+                    'new' => $query->whereDoesntHave('purchaseOrders'),
+                    default => null,
+                };
+            })
             ->orderBy('name')
             ->paginate($this->perPage($request));
 
         return ApiResponse::paginator($paginator, map: fn (Supplier $supplier) => $this->present($supplier));
+    }
+
+    public function summary(Request $request)
+    {
+        $this->authorize($request);
+
+        $suppliers = Supplier::query()
+            ->with('account')
+            ->withSum('purchaseOrders as total_purchases', 'total')
+            ->get();
+
+        $count = $suppliers->count();
+        $active = $suppliers->filter(fn (Supplier $s) => (float) $s->total_purchases > 0)->count();
+        $withBalance = $suppliers->filter(fn (Supplier $s) => (float) ($s->account->balance ?? 0) > 0)->count();
+        $outstanding = round((float) $suppliers->sum(fn (Supplier $s) => (float) ($s->account->balance ?? 0)), 2);
+        $purchasesValue = round((float) $suppliers->sum('total_purchases'), 2);
+
+        $orders = PurchaseOrder::query()
+            ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(total), 0) as aggregate_value')
+            ->first();
+
+        $inbound = PurchaseOrder::query()
+            ->where('status', 'approved')
+            ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(total), 0) as aggregate_value')
+            ->first();
+
+        $due = SupplierInvoice::query()
+            ->where('status', '!=', 'paid')
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', '<=', Carbon::now()->addDays(14)->toDateString())
+            ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(amount), 0) as aggregate_value')
+            ->first();
+
+        return ApiResponse::success([
+            'active_suppliers' => ['count' => $count, 'with_orders' => $active],
+            'ap_outstanding' => [
+                'count' => $withBalance,
+                'value' => $outstanding,
+            ],
+            'purchases' => [
+                'count' => (int) ($orders->aggregate_count ?? 0),
+                'value' => round((float) ($orders->aggregate_value ?? 0), 2),
+            ],
+            'inbound' => [
+                'count' => (int) ($inbound->aggregate_count ?? 0),
+                'value' => round((float) ($inbound->aggregate_value ?? 0), 2),
+            ],
+            'ap_due_14d' => [
+                'count' => (int) ($due->aggregate_count ?? 0),
+                'value' => round((float) ($due->aggregate_value ?? 0), 2),
+            ],
+            'filters' => [
+                'all' => $count,
+                'active' => $active,
+                'new' => $count - $active,
+                'balance' => $withBalance,
+                'clear' => $count - $withBalance,
+            ],
+        ]);
     }
 
     public function show(Request $request, int $supplier)
@@ -134,6 +204,14 @@ class SupplierController extends Controller
 
     private function present(Supplier $supplier): array
     {
+        $orderStats = PurchaseOrder::query()
+            ->where('supplier_id', $supplier->id)
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->selectRaw("COUNT(CASE WHEN status = 'approved' THEN 1 END) as in_transit")
+            ->selectRaw("COUNT(CASE WHEN status NOT IN ('received', 'cancelled') THEN 1 END) as open_orders")
+            ->selectRaw('MAX(created_at) as last_order_at')
+            ->first();
+
         return [
             'id' => $supplier->id,
             'name' => $supplier->name,
@@ -143,6 +221,12 @@ class SupplierController extends Controller
             'address' => $supplier->address,
             'outstanding_balance' => round((float) ($supplier->account->balance ?? 0), 2),
             'total_purchases' => (float) ($supplier->total_purchases ?? 0),
+            'orders_count' => (int) ($orderStats->aggregate_count ?? 0),
+            'in_transit_count' => (int) ($orderStats->in_transit ?? 0),
+            'open_orders' => (int) ($orderStats->open_orders ?? 0),
+            'last_order_at' => $orderStats->last_order_at
+                ? Carbon::parse($orderStats->last_order_at)->toIso8601String()
+                : null,
             'created_at' => $supplier->created_at?->toIso8601String(),
         ];
     }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LogOut, Play, RefreshCw, Settings2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowUpRight, LogOut, Play, RefreshCw, Settings2 } from 'lucide-react'
 import { shiftApi, type Shift } from '@/lib/api/endpoints/shifts'
 import { useAppStore } from '@/stores/app'
 import { PageHeader } from '@/components/common/page-header'
@@ -51,6 +52,7 @@ import { ApiError } from '@/lib/api/errors'
 export function ShiftsPage() {
   const queryClient = useQueryClient()
   const branchId = useAppStore((s) => s.context?.branch?.id)
+  const navigate = useNavigate()
 
   const [openDialog, setOpenDialog] = useState(false)
   const [closeDialog, setCloseDialog] = useState(false)
@@ -190,7 +192,7 @@ export function ShiftsPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div className="rounded-xl border border-border/70 p-4">
                     <p className="text-[11px] text-muted-foreground">Opening cash</p>
                     <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
@@ -203,7 +205,11 @@ export function ShiftsPage() {
                       {formatCurrency(currentShift.expected_cash)}
                     </p>
                   </div>
-                  <div className="col-span-2 flex items-end justify-end sm:col-span-1">
+                  <div className="col-span-2 flex items-end justify-end gap-2 sm:col-span-2">
+                    <Button variant="outline" onClick={() => navigate(`/shifts/${currentShift.id}`)}>
+                      <ArrowUpRight className="h-4 w-4" />
+                      View details
+                    </Button>
                     <Button variant="success" onClick={() => openCloseDialog(currentShift)}>
                       <LogOut className="h-4 w-4" />
                       Close shift
@@ -324,7 +330,11 @@ export function ShiftsPage() {
                   </TableHeader>
                   <TableBody>
                     {history.data!.data.map((shift) => (
-                      <TableRow key={shift.id}>
+                      <TableRow
+                        key={shift.id}
+                        className="cursor-pointer"
+                        onClick={() => navigate(`/shifts/${shift.id}`)}
+                      >
                         <TableCell className="text-sm font-medium text-foreground">
                           {shift.branch_name}
                         </TableCell>
@@ -345,6 +355,9 @@ export function ShiftsPage() {
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums text-foreground">
                           {formatCurrency(shift.expected_cash)}
+                        </TableCell>
+                        <TableCell className="w-8 pr-2 text-right text-muted-foreground">
+                          <ArrowUpRight className="h-3.5 w-3.5" />
                         </TableCell>
                       </TableRow>
                     ))}

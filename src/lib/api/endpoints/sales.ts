@@ -1,5 +1,5 @@
 import { http } from '../client'
-import type { ApiEnvelope, Paginated } from '../types'
+import type { ApiEnvelope, Paginated, PaginationMeta } from '../types'
 
 export type SaleStatus =
   | 'completed'
@@ -102,8 +102,26 @@ export interface SaleListParams {
   search?: string
 }
 
+export interface SaleTender {
+  method: string
+  amount: number
+}
+
+export interface SaleSummary {
+  gross_total: number
+  count: number
+  avg_total: number
+  void_count: number
+  void_amount: number
+  tenders: SaleTender[]
+}
+
+export interface SaleListPage extends Paginated<SaleListItem> {
+  meta: PaginationMeta & { summary?: SaleSummary }
+}
+
 export const salesApi = {
-  list: (params?: SaleListParams) => http.get<Paginated<SaleListItem>>('/sales', { params }),
+  list: (params?: SaleListParams) => http.get<SaleListPage>('/sales', { params }),
 
   get: (id: number) => http.get<ApiEnvelope<SaleDetail>>(`/sales/${id}`),
 

@@ -83,12 +83,25 @@ class ShiftController extends Controller
         $data = $request->validate([
             'actual_cash' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:255'],
+            'shift_id' => ['nullable', 'integer'],
         ]);
 
-        $shift = $this->shifts->current($request->user()->id, TenantContext::branchId());
+        $shift = null;
+
+        if (isset($data['shift_id'])) {
+            $shift = Shift::query()->findOrFail((int) $data['shift_id']);
+        }
+
+        if ($shift === null) {
+            $shift = $this->shifts->current($request->user()->id, TenantContext::branchId());
+        }
 
         if ($shift === null) {
             throw new ApiException('NO_OPEN_SHIFT', 'You do not have an open shift.', 422);
+        }
+
+        if (! $request->user()->hasBranchAccess($shift->branch_id)) {
+            throw new ApiException('BRANCH_ACCESS', 'You do not have access to this branch.', 403);
         }
 
         [$closed, $reconciliation] = $this->shifts->close($shift, isset($data['actual_cash']) ? (float) $data['actual_cash'] : null, $data['notes'] ?? null);
@@ -103,6 +116,49 @@ class ShiftController extends Controller
             [...$this->present($closed->load(['branch', 'user'])), 'reconciliation' => $reconciliation],
             'Shift closed.',
         );
+    }
+
+    public function show(Request $request, Shift $shift)
+    {
+        abort_unless($request->user()->can('shifts.view') || $request->user()->can('shifts.operate'), 403);
+
+        $shift->load(['branch', 'user']);
+
+        return ApiResponse::success($this->shifts->detail($shift));
+    }
+
+    public function storeMovement(Request $request, Shift $shift)
+    {
+        abort_unless($request->user()->can('shifts.operate'), 403);
+
+        if (! $request->user()->hasBranchAccess($shift->branch_id)) {
+            throw new ApiException('BRANCH_ACCESS', 'You do not have access to this branch.', 403);
+        }
+
+        $data = $request->validate([
+            'type' => ['required', 'in:drop,payout'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $movement = $this->shifts->recordMovement(
+            $shift,
+            (string) $data['type'],
+            (float) $data['amount'],
+            $data['reason'] ?? null,
+            $request->user()->id,
+        );
+
+        AuditLog::record('shift.cash_movement', 'shift_cash_movement', $movement->id, [
+            'shift_id' => $shift->id,
+            'type' => $movement->type,
+            'amount' => (float) $movement->amount,
+            'reference' => $movement->reference,
+        ]);
+
+        return ApiResponse::success(['id' => $movement->id, 'reference' => $movement->reference], $data['type'] === 'drop'
+            ? 'Safe drop recorded.'
+            : 'Paid out recorded.');
     }
 
     public function history(Request $request)
@@ -146,13 +202,18 @@ class ShiftController extends Controller
             'id' => $shift->id,
             'branch_id' => $shift->branch_id,
             'branch_name' => $shift->branch?->name ?? '',
+            'branch_code' => $shift->branch?->code ?? '',
             'user_id' => $shift->user_id,
             'user_name' => $shift->user?->name ?? '',
+            'user_role' => $shift->user?->getRoleNames()->first() ?? 'Staff',
             'status' => $shift->status,
             'opened_at' => $shift->opened_at?->toIso8601String() ?? $shift->created_at?->toIso8601String(),
             'closed_at' => $shift->closed_at?->toIso8601String(),
             'expected_cash' => (float) $shift->expected_cash,
             'opening_cash' => (float) $shift->opening_cash,
+            'actual_cash' => $shift->actual_cash === null ? null : (float) $shift->actual_cash,
+            'variance' => $shift->variance === null ? null : (float) $shift->variance,
+            'notes' => $shift->notes,
         ];
     }
 

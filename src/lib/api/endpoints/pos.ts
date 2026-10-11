@@ -145,7 +145,7 @@ export interface SaleResult {
 }
 
 export const posApi = {
-  searchProducts: (params: { q?: string; page?: number; per_page?: number }) =>
+  searchProducts: (params: { q?: string; category?: string; page?: number; per_page?: number }) =>
     http.get<Paginated<SellableProduct>>('/pos/search', { params }),
 
   lookupBarcode: (barcode: string) =>

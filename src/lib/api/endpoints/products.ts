@@ -17,6 +17,11 @@ export interface Product {
   is_active: boolean
   has_variants: boolean
   variants?: ProductVariant[]
+  stock_tracked?: boolean
+  stock_qty?: number
+  low_stock_threshold?: number | null
+  stock_status?: 'in_stock' | 'low' | 'out_of_stock' | 'untracked'
+  stock_value?: number
   created_at?: string
   updated_at?: string
 }
@@ -56,7 +61,37 @@ export interface CatalogItem {
   name: string
 }
 
+export interface CatalogStat {
+  id: number
+  name: string
+  sku_count: number
+  valuation: number
+  margin: number
+  expiry_count: number
+  tax_rate: number | null
+  products: string[]
+}
+
+export interface CatalogMetrics {
+  sku_count: number
+  valuation: number
+  margin: number
+  expiry_count: number
+  tax_rate: number | null
+  category_count: number
+  brand_count: number
+}
+
+export interface CatalogOverview {
+  categories: CatalogStat[]
+  brands: CatalogStat[]
+  metrics: CatalogMetrics
+}
+
 export const catalogApi = {
+  overview: (params?: { branch_id?: number }) =>
+    http.get<ApiEnvelope<CatalogOverview>>('/catalog/overview', { params }),
+
   categories: () => http.get<ApiEnvelope<CatalogItem[]>>('/product-categories'),
   createCategory: (name: string) =>
     http.post<ApiEnvelope<CatalogItem>>('/product-categories', { name }),

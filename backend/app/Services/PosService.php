@@ -29,11 +29,15 @@ class PosService
     ) {
     }
 
-    public function search(string $term, ?int $branchId, int $perPage): LengthAwarePaginator
+    public function search(string $term, ?int $branchId, int $perPage, ?string $category = null): LengthAwarePaginator
     {
         $query = Product::query()
             ->where('is_active', true)
             ->with(['brand', 'category', 'unit', 'barcodes', 'variants.barcodes']);
+
+        if ($category !== null && $category !== '') {
+            $query->whereHas('category', fn ($c) => $c->where('name', $category));
+        }
 
         if ($term !== '') {
             $like = '%'.$term.'%';

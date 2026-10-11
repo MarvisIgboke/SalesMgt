@@ -22,6 +22,7 @@ class PosController extends Controller
             (string) $request->query('q', ''),
             $this->branchId($request),
             $this->perPage($request),
+            $request->query('category') ? (string) $request->query('category') : null,
         );
 
         return ApiResponse::paginator($paginator);

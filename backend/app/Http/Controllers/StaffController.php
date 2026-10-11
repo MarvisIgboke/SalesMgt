@@ -4,12 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\ApiException;
 use App\Models\AuditLog;
+use App\Models\Branch;
+use App\Models\Business;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Support\ApiResponse;
 use App\Support\PermissionCatalog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
@@ -34,6 +38,175 @@ class StaffController extends Controller
             ->paginate($perPage);
 
         return ApiResponse::paginator($paginator, map: fn (User $user) => $this->present($user));
+    }
+
+    /**
+     * Workforce telemetry for the staff dashboard: headline KPIs (active staff,
+     * till terminals, shift-attributed sales, drawer audit) plus a per-member
+     * roster matrix with duty state, today's sales and effective permissions.
+     */
+    public function summary(Request $request)
+    {
+        $user = $request->user();
+        abort_unless($user->can('staff.view') || $user->can('staff.edit') || $user->isSuperAdmin(), 403);
+
+        $businessId = TenantContext::businessId();
+
+        $members = User::query()
+            ->where('business_id', $businessId)
+            ->with(['roles.permissions', 'permissions'])
+            ->orderBy('name')
+            ->get();
+
+        $since = now()->subDay();
+        $todayStart = now()->startOfDay();
+
+        $openShifts = DB::table('shifts')
+            ->where('business_id', $businessId)
+            ->where('status', 'open')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('user_id')
+            ->keyBy('user_id');
+
+        $drawer = DB::table('shifts')
+            ->where('business_id', $businessId)
+            ->where('status', 'closed')
+            ->where('closed_at', '>=', $since)
+            ->selectRaw('COUNT(*) AS audits, COALESCE(SUM(variance), 0) AS variance, COALESCE(SUM(CASE WHEN variance = 0 THEN 1 ELSE 0 END), 0) AS exact')
+            ->first();
+
+        $todaySales = DB::table('sales')
+            ->where('business_id', $businessId)
+            ->whereIn('status', ['completed', 'partially_refunded'])
+            ->where('created_at', '>=', $todayStart)
+            ->groupBy('user_id')
+            ->selectRaw('user_id, COALESCE(SUM(total), 0) AS value, COUNT(*) AS orders')
+            ->get()
+            ->keyBy('user_id');
+
+        $branchNames = Branch::query()
+            ->where('business_id', $businessId)
+            ->pluck('name', 'id');
+
+        $cards = [];
+        $counts = ['on_duty' => 0, 'off_duty' => 0, 'cashiers' => 0, 'inventory' => 0, 'supervisors' => 0];
+        $openTillBranches = [];
+
+        foreach ($members as $member) {
+            $shift = $openShifts->get($member->id);
+            $onDuty = $shift !== null;
+            $sale = $todaySales->get($member->id);
+
+            $direct = $member->permissions->pluck('name');
+            $viaRoles = $member->roles->flatMap(fn (Role $role) => $role->permissions->pluck('name'));
+            $effective = $direct->merge($viaRoles)->unique()->values()->all();
+
+            $isCashier = in_array('shifts.operate', $effective, true) || in_array('sales.create', $effective, true);
+            $isInventory = array_filter($effective, fn (string $p) => str_starts_with($p, 'inventory.')) !== [];
+            $isSupervisor = in_array('staff.permissions', $effective, true) || in_array('staff.edit', $effective, true);
+
+            if ($onDuty) {
+                $counts['on_duty']++;
+                $openTillBranches[(int) $shift->branch_id] = true;
+            } else {
+                $counts['off_duty']++;
+            }
+            if ($isCashier) {
+                $counts['cashiers']++;
+            }
+            if ($isInventory) {
+                $counts['inventory']++;
+            }
+            if ($isSupervisor) {
+                $counts['supervisors']++;
+            }
+
+            $roleNames = $member->getRoleNames()->values()->all();
+            $branchIds = $member->branch_ids ?? [];
+
+            $cards[] = [
+                'id' => $member->id,
+                'user_id' => $member->id,
+                'name' => $member->name,
+                'email' => $member->email,
+                'phone' => $member->phone,
+                'avatar_url' => $member->avatar_url,
+                'employee_code' => 'EMP-'.str_pad((string) $member->id, 3, '0', STR_PAD_LEFT),
+                'roles' => $roleNames,
+                'tier' => $this->tier($roleNames),
+                'branch_ids' => $branchIds,
+                'branch_names' => collect($branchIds)
+                    ->map(fn ($id) => $branchNames[$id] ?? '#'.$id)
+                    ->values()
+                    ->all(),
+                'is_active' => (bool) $member->is_active,
+                'last_active_at' => $member->last_login_at?->toIso8601String(),
+                'on_duty' => $onDuty,
+                'is_cashier' => $isCashier,
+                'is_inventory_lead' => $isInventory,
+                'is_supervisor' => $isSupervisor,
+                'shift' => $shift ? [
+                    'id' => (int) $shift->id,
+                    'branch_id' => (int) $shift->branch_id,
+                    'branch_name' => $branchNames[$shift->branch_id] ?? null,
+                    'opened_at' => $shift->opened_at ? Carbon::parse($shift->opened_at)->toIso8601String() : null,
+                    'opening_cash' => (float) $shift->opening_cash,
+                    'expected_cash' => (float) $shift->expected_cash,
+                ] : null,
+                'sales_today' => (float) ($sale->value ?? 0),
+                'orders_today' => (int) ($sale->orders ?? 0),
+                'permissions_count' => count($effective),
+                'can' => [
+                    'credit' => in_array('sales.credit', $effective, true),
+                    'discount' => in_array('sales.discount', $effective, true),
+                    'refund' => in_array('sales.refund', $effective, true),
+                    'reconcile' => in_array('shifts.reconcile', $effective, true),
+                    'approve' => array_intersect($effective, [
+                        'finance.payment_approve', 'expenses.approve', 'purchases.approve', 'inventory.approve',
+                    ]) !== [],
+                ],
+            ];
+        }
+
+        $gmvValue = (float) $todaySales->sum('value');
+        $gmvOrders = (int) $todaySales->sum('orders');
+        $audits = (int) ($drawer->audits ?? 0);
+        $exact = (int) ($drawer->exact ?? 0);
+
+        return ApiResponse::success([
+            'business_id' => $businessId,
+            'currency' => Business::query()->whereKey($businessId)->value('currency') ?? 'NGN',
+            'staff' => [
+                'total' => $members->count(),
+                'active' => $members->where('is_active', true)->count(),
+                'on_duty' => $counts['on_duty'],
+                'off_duty' => $counts['off_duty'],
+            ],
+            'tills' => [
+                'open' => $openShifts->count(),
+                'branches' => count($openTillBranches),
+            ],
+            'shift_gmv' => [
+                'value' => round($gmvValue, 2),
+                'orders' => $gmvOrders,
+                'average' => $gmvOrders > 0 ? round($gmvValue / $gmvOrders, 2) : 0.0,
+            ],
+            'drawer' => [
+                'accuracy_pct' => $audits > 0 ? round(($exact / $audits) * 100, 1) : 100.0,
+                'variance' => round((float) ($drawer->variance ?? 0), 2),
+                'audits' => $audits,
+            ],
+            'filters' => [
+                'all' => $members->count(),
+                'on_duty' => $counts['on_duty'],
+                'cashiers' => $counts['cashiers'],
+                'inventory' => $counts['inventory'],
+                'supervisors' => $counts['supervisors'],
+                'off_duty' => $counts['off_duty'],
+            ],
+            'members' => $cards,
+        ]);
     }
 
     public function show(Request $request, int $staff)
@@ -307,6 +480,33 @@ class StaffController extends Controller
             'is_active' => (bool) $user->is_active,
             'last_active_at' => $user->last_login_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * @param  array<int, string>  $roles
+     */
+    private function tier(array $roles): string
+    {
+        if (in_array('Super Admin', $roles, true)) {
+            return 'Command';
+        }
+        if (in_array('Store Manager', $roles, true)) {
+            return 'Supervisor';
+        }
+        if (in_array('Finance Officer', $roles, true)) {
+            return 'Finance';
+        }
+        if (in_array('Inventory Officer', $roles, true)) {
+            return 'Inventory';
+        }
+        if (in_array('Sales Representative', $roles, true)) {
+            return 'Till';
+        }
+        if (in_array('Auditor', $roles, true)) {
+            return 'Audit';
+        }
+
+        return 'Unassigned';
     }
 
     private function presentRole(Role $role): array

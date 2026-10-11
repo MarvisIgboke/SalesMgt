@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\ApiException;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Models\ProductBarcode;
 use App\Models\AuditLog;
@@ -23,6 +24,7 @@ class ProductController extends Controller
         abort_unless($request->user()->can('products.view') || $request->user()->can('sales.create'), 403);
 
         $perPage = min(max((int) $request->query('per_page', 20), 1), 100);
+        $branchId = $request->filled('branch_id') ? (int) $request->query('branch_id') : null;
 
         $products = Product::query()
             ->with(['category', 'brand', 'unit', 'barcodes', 'variants.barcodes'])
@@ -39,14 +41,25 @@ class ProductController extends Controller
             ->orderByDesc('id')
             ->paginate($perPage);
 
-        return ApiResponse::paginator($products, map: fn (Product $product) => $product->toApi(true));
+        $stockTotals = $this->stockTotals($products->pluck('id')->all(), $branchId);
+
+        return ApiResponse::paginator($products, map: fn (Product $product) => array_merge(
+            $product->toApi(true),
+            $this->stockPayload($product, $stockTotals),
+        ));
     }
 
     public function show(Request $request, int $product)
     {
         abort_unless($request->user()->can('products.view') || $request->user()->can('sales.create'), 403);
 
-        return ApiResponse::success($this->find($product)->load(['category', 'brand', 'unit', 'barcodes', 'variants.barcodes'])->toApi(true));
+        $branchId = $request->filled('branch_id') ? (int) $request->query('branch_id') : null;
+        $model = $this->find($product)->load(['category', 'brand', 'unit', 'barcodes', 'variants.barcodes']);
+
+        return ApiResponse::success(array_merge(
+            $model->toApi(true),
+            $this->stockPayload($model, $this->stockTotals([$model->id], $branchId)),
+        ));
     }
 
     public function store(Request $request)
@@ -181,6 +194,57 @@ class ProductController extends Controller
     private function find(int $id): Product
     {
         return Product::query()->findOrFail($id);
+    }
+
+    /**
+     * @param  array<int, int>  $ids
+     * @return array<int, object>
+     */
+    private function stockTotals(array $ids, ?int $branchId): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return InventoryBalance::query()
+            ->whereIn('product_id', $ids)
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
+            ->groupBy('product_id')
+            ->selectRaw('product_id, SUM(quantity) as qty')
+            ->get()
+            ->mapWithKeys(fn ($row) => [(int) $row->product_id => $row])
+            ->all();
+    }
+
+    /**
+     * @param  array<int, object>  $totals
+     */
+    private function stockPayload(Product $product, array $totals): array
+    {
+        $threshold = $product->low_stock_threshold === null ? null : (float) $product->low_stock_threshold;
+
+        if (! array_key_exists($product->id, $totals)) {
+            return [
+                'stock_tracked' => false,
+                'stock_qty' => 0,
+                'low_stock_threshold' => $threshold,
+                'stock_status' => 'untracked',
+                'stock_value' => 0,
+            ];
+        }
+
+        $qty = (float) $totals[$product->id]->qty;
+        $status = $qty <= 0
+            ? 'out_of_stock'
+            : ($threshold !== null && $qty <= $threshold ? 'low' : 'in_stock');
+
+        return [
+            'stock_tracked' => true,
+            'stock_qty' => round($qty, 3),
+            'low_stock_threshold' => $threshold,
+            'stock_status' => $status,
+            'stock_value' => round($qty * (float) $product->cost_price, 2),
+        ];
     }
 
     private function validated(Request $request, bool $partial = false): array
