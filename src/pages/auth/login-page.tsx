@@ -129,6 +129,16 @@ export function LoginPage() {
             {!loginMutation.isPending && 'Sign in'}
           </Button>
 
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              className="text-xs font-medium text-primary hover:underline"
+              onClick={() => navigate('/register')}
+            >
+              Don't have an account? Register a new business
+            </button>
+          </div>
+
           <div className="mt-5 flex items-center justify-center gap-1.5 text-center">
             <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-[11px] text-muted-foreground">

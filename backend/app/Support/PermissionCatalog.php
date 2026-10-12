@@ -116,6 +116,29 @@ final class PermissionCatalog
         return self::all();
     }
 
+    public static function businessAdmin(): array
+    {
+        return [
+            'dashboard.view',
+            'sales.view', 'sales.create', 'sales.edit', 'sales.cancel', 'sales.discount', 'sales.credit', 'sales.refund', 'sales.price_override',
+            'products.view', 'products.create', 'products.edit', 'products.delete',
+            'customers.view', 'customers.create', 'customers.edit', 'customers.credit',
+            'inventory.view', 'inventory.adjust', 'inventory.receive', 'inventory.transfer',
+            'finance.view',
+            'expenses.create', 'expenses.approve',
+            'purchases.create', 'purchases.approve', 'purchases.receive',
+            'staff.view', 'staff.create', 'staff.edit', 'staff.permissions',
+            'shifts.view', 'shifts.operate', 'shifts.reconcile',
+            'departments.view', 'departments.manage',
+            'wallet.view', 'wallet.transactions', 'wallet.manage',
+            'subscription.view',
+            'reports.view',
+            'audit.view',
+            'search.view',
+            'notifications.view',
+        ];
+    }
+
     public static function storeManager(): array
     {
         return [
@@ -126,12 +149,10 @@ final class PermissionCatalog
             'inventory.view', 'inventory.adjust',
             'finance.view',
             'expenses.create',
-            'purchases.create', 'purchases.approve', 'purchases.receive',
-            'staff.view', 'staff.create', 'staff.edit', 'staff.permissions',
+            'purchases.create', 'purchases.receive',
+            'staff.view', 'staff.create', 'staff.edit',
             'shifts.view', 'shifts.operate', 'shifts.reconcile',
             'departments.view', 'departments.manage',
-            'wallet.view', 'wallet.transactions',
-            'subscription.view',
             'reports.view',
             'search.view',
             'notifications.view',

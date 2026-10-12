@@ -267,6 +267,24 @@ class BusinessController extends Controller
             'defaults' => ['currency' => 'NGN'],
         ]);
 
+        // Auto-create Store Manager for new branch
+        if ($targetBusinessId) {
+            $mgrEmail = 'manager.' . Str::slug($branch->code ?? $branch->name) . '.' . $targetBusinessId . '@example.com';
+            if (! User::withoutGlobalScope('tenant-business')->where('email', $mgrEmail)->exists()) {
+                $mgr = User::create([
+                    'business_id' => $targetBusinessId,
+                    'name' => 'Store Manager - ' . $branch->name,
+                    'email' => $mgrEmail,
+                    'password' => 'password',
+                    'is_active' => true,
+                    'branch_ids' => [$branch->id],
+                ]);
+                if (method_exists($mgr, 'assignRole')) {
+                    $mgr->assignRole('Store Manager');
+                }
+            }
+        }
+
         return ApiResponse::success(Presenter::branch($branch), 'Branch created.');
     }
 
@@ -362,6 +380,25 @@ class BusinessController extends Controller
                     'trial_ends_at' => now()->addDays(30)->toDateString(),
                     'limits' => $plan->limits(),
                 ]);
+            }
+        }
+
+        // Auto-create Business Admin login credential for the new business
+        if (! User::withoutGlobalScope('tenant-business')->where('business_id', $business->id)->where('email', $data['email'] ?? null)->exists() || true) {
+            $adminEmail = $data['email'] ?? $business->slug . '@' . parse_url(config('app.url'))['host'] ?? 'business.local';
+            $adminEmail = is_string($adminEmail) ? $adminEmail : ($business->slug . '@example.com');
+            if (! User::withoutGlobalScope('tenant-business')->where('email', $adminEmail)->exists()) {
+                $admin = User::create([
+                    'business_id' => $business->id,
+                    'name' => 'Business Admin',
+                    'email' => $adminEmail,
+                    'password' => 'password',
+                    'is_active' => true,
+                    'branch_ids' => [],
+                ]);
+                if (method_exists($admin, 'assignRole')) {
+                    $admin->assignRole('Business Admin');
+                }
             }
         }
 

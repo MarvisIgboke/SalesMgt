@@ -26,6 +26,7 @@ use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\WalletController;
 use Illuminate\Support\Facades\Route;
 
@@ -40,6 +41,11 @@ Route::get('/branches', [BusinessController::class, 'branches']);
 Route::post('/branches', [BusinessController::class, 'storeBranch']);
 Route::put('/branches/{branch}', [BusinessController::class, 'updateBranch'])->whereNumber('branch');
 Route::delete('/branches/{branch}', [BusinessController::class, 'destroyBranch'])->whereNumber('branch');
+
+// Platform user directory (Super Admin only).
+Route::get('/users', [UserController::class, 'index']);
+Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->whereNumber('user');
+Route::post('/users/{user}/toggle-active', [UserController::class, 'toggleActive'])->whereNumber('user');
 
 // Wallet & subscription.
 Route::get('/wallet', [WalletController::class, 'show']);

@@ -3,12 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\ApiException;
+use App\Models\Business;
+use App\Models\Subscription;
+use App\Models\SubscriptionPlan;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Services\AuthService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -155,5 +161,73 @@ class AuthController extends Controller
         }
 
         return ApiResponse::success(null, 'Your password has been reset.');
+    }
+
+    public function register(Request $request)
+    {
+        $data = $request->validate([
+            'business_name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:150'],
+            'email' => ['required', 'email', 'max:191', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'plan_id' => ['nullable', 'integer'],
+        ]);
+
+        $slug = Str::slug($data['business_name']);
+
+        return DB::transaction(function () use ($data, $slug) {
+            $business = Business::firstOrCreate(
+                ['slug' => $slug],
+                [
+                    'name' => $data['business_name'],
+                    'slug' => $slug,
+                    'currency' => 'NGN',
+                    'timezone' => 'Africa/Lagos',
+                ]
+            );
+
+            if (! Wallet::withoutGlobalScope('tenant-business')->where('business_id', $business->id)->exists()) {
+                Wallet::create(['business_id' => $business->id, 'currency' => $business->currency, 'balance' => 0, 'pending' => 0]);
+            }
+
+            if (! Subscription::withoutGlobalScope('tenant-business')->where('business_id', $business->id)->exists()) {
+                $plan = SubscriptionPlan::find($data['plan_id'] ?? null) ?? SubscriptionPlan::where('slug', 'starter')->first();
+                if ($plan) {
+                    Subscription::create([
+                        'business_id' => $business->id,
+                        'plan_id' => $plan->id,
+                        'status' => 'trial',
+                        'starts_at' => now()->toDateString(),
+                        'trial_ends_at' => now()->addDays(30)->toDateString(),
+                        'limits' => $plan->limits(),
+                    ]);
+                }
+            }
+
+            $user = User::create([
+                'business_id' => $business->id,
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'phone' => $data['phone'] ?? null,
+                'password' => $data['password'],
+                'is_active' => true,
+                'branch_ids' => [],
+            ]);
+
+            if (method_exists($user, 'assignRole')) {
+                $user->assignRole('Business Admin');
+            }
+
+            $session = $this->auth->issue(
+                $user,
+                'Web',
+                request()->ip(),
+                request()->userAgent(),
+                false,
+            );
+
+            return ApiResponse::success($session, 'Business registered successfully.');
+        });
     }
 }

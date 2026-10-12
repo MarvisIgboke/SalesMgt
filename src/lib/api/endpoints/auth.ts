@@ -68,4 +68,14 @@ export const authApi = {
     http.post<ApiEnvelope<{ access_token: string }>>('/auth/refresh', {
       refresh_token: refreshToken,
     }),
+
+  register: (input: {
+    business_name: string
+    name: string
+    email: string
+    password: string
+    password_confirmation: string
+    phone?: string | null
+    plan_id?: number
+  }) => http.post<ApiEnvelope<AuthSession>>('/auth/register', input),
 }

@@ -49,7 +49,7 @@ class StaffController extends Controller
     public function summary(Request $request)
     {
         $user = $request->user();
-        abort_unless($user->can('staff.view') || $user->can('staff.edit') || $user->isSuperAdmin(), 403);
+        abort_unless($user->can('staff.view') || $user->can('staff.edit'), 403);
 
         $businessId = TenantContext::businessId();
 
@@ -360,7 +360,7 @@ class StaffController extends Controller
 
     public function staffPermissions(Request $request, int $staff)
     {
-        abort_unless($request->user()->can('staff.permissions') || $request->user()->can('staff.view'), 403);
+        abort_unless($request->user()->can('staff.permissions'), 403);
 
         $user = $this->find($staff);
 

@@ -190,7 +190,9 @@ class ShiftController extends Controller
             'to' => ['nullable', 'date'],
         ]);
 
-        $branchId = $data['branch_id'] ?? TenantContext::branchId();
+        // No branch_id means the caller wants the full fleet ("All Terminals"),
+        // matching the unfiltered shift feed. Only narrow when one is supplied.
+        $branchId = $data['branch_id'] ?? null;
         $from = isset($data['from']) ? Carbon::parse($data['from'])->startOfDay() : null;
         $to = isset($data['to']) ? Carbon::parse($data['to'])->endOfDay() : null;
 

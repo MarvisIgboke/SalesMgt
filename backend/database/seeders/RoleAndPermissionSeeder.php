@@ -23,6 +23,7 @@ class RoleAndPermissionSeeder extends Seeder
 
         $roles = [
             'Super Admin' => PermissionCatalog::superAdmin(),
+            'Business Admin' => PermissionCatalog::businessAdmin(),
             'Store Manager' => PermissionCatalog::storeManager(),
             'Finance Officer' => PermissionCatalog::financeOfficer(),
             'Inventory Officer' => PermissionCatalog::inventoryOfficer(),

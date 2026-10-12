@@ -104,6 +104,12 @@ const NotFoundPage = lazy(() =>
 const LoginPage = lazy(() =>
   import('@/pages/auth/login-page').then((m) => ({ default: m.LoginPage })),
 )
+const RegisterPage = lazy(() =>
+  import('@/pages/auth/register-page').then((m) => ({ default: m.RegisterPage })),
+)
+const UsersPage = lazy(() =>
+  import('@/pages/users/users-page').then((m) => ({ default: m.UsersPage })),
+)
 
 export const router = createBrowserRouter([
   {
@@ -117,6 +123,14 @@ export const router = createBrowserRouter([
             element: (
               <Page variant="cards">
                 <LoginPage />
+              </Page>
+            ),
+          },
+          {
+            path: '/register',
+            element: (
+              <Page variant="cards">
+                <RegisterPage />
               </Page>
             ),
           },
@@ -326,6 +340,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Page variant="cards">
                     <PlansPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/users',
+                element: (
+                  <Page variant="cards">
+                    <UsersPage />
                   </Page>
                 ),
               },

@@ -100,6 +100,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Businesses', path: '/businesses', icon: Building2, section: 'platform', superAdminOnly: true },
       { label: 'Plans', path: '/subscription/plans', icon: Gem, section: 'platform', superAdminOnly: true },
+      { label: 'Users', path: '/users', icon: Users, section: 'platform', superAdminOnly: true },
     ],
   },
 ]
