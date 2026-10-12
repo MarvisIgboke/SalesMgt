@@ -25,6 +25,7 @@ class User extends Authenticatable
         'email',
         'password',
         'business_id',
+        'department_id',
         'phone',
         'avatar_url',
         'branch_ids',
@@ -63,6 +64,16 @@ class User extends Authenticatable
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    public function departmentId(): ?int
+    {
+        return $this->department_id === null ? null : (int) $this->department_id;
     }
 
     public function hasBranchAccess(int $branchId): bool

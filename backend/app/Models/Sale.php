@@ -12,7 +12,7 @@ class Sale extends Model
     use BelongsToBusiness;
 
     protected $fillable = [
-        'business_id', 'branch_id', 'reference', 'client_request_id', 'customer_id',
+        'business_id', 'branch_id', 'shift_id', 'sale_session_id', 'reference', 'client_request_id', 'customer_id',
         'user_id', 'status', 'subtotal', 'discount_total', 'tax_total', 'total',
         'currency', 'payment_status', 'paid_amount', 'change_due', 'requires_approval',
         'approval_state', 'held_until', 'notes',
@@ -71,5 +71,15 @@ class Sale extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function shift(): BelongsTo
+    {
+        return $this->belongsTo(Shift::class);
+    }
+
+    public function saleSession(): BelongsTo
+    {
+        return $this->belongsTo(SaleSession::class);
     }
 }

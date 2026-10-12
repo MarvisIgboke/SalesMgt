@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\ApiException;
 use App\Models\AuditLog;
+use App\Models\BusinessSetting;
 use App\Models\Customer;
 use App\Models\InventoryBalance;
 use App\Models\Payment;
@@ -13,6 +14,7 @@ use App\Models\ProductBarcode;
 use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\SaleApproval;
+use App\Models\Shift;
 use App\Models\StockBatch;
 use App\Models\User;
 use App\Support\ReferenceGenerator;
@@ -26,17 +28,24 @@ class PosService
         private readonly InventoryService $inventory,
         private readonly CustomerLedgerService $ledger,
         private readonly RiskService $risk,
+        private readonly SaleSessionService $saleSessions,
     ) {
     }
 
-    public function search(string $term, ?int $branchId, int $perPage, ?string $category = null): LengthAwarePaginator
+    public function search(string $term, ?int $branchId, int $perPage, ?string $category = null, ?User $user = null): LengthAwarePaginator
     {
         $query = Product::query()
             ->where('is_active', true)
-            ->with(['brand', 'category', 'unit', 'barcodes', 'variants.barcodes']);
+            ->with(['brand', 'category', 'department', 'unit', 'barcodes', 'variants.barcodes']);
 
         if ($category !== null && $category !== '') {
             $query->whereHas('category', fn ($c) => $c->where('name', $category));
+        }
+
+        $departmentId = $user === null ? null : $this->departmentRestriction($user);
+
+        if ($departmentId !== null) {
+            $query->where(fn ($x) => $x->where('department_id', $departmentId)->orWhereNull('department_id'));
         }
 
         if ($term !== '') {
@@ -59,7 +68,7 @@ class PosService
         return $paginator->setCollection(collect($mapped));
     }
 
-    public function productForBarcode(string $barcode, ?int $branchId): array
+    public function productForBarcode(string $barcode, ?int $branchId, ?User $user = null): array
     {
         $match = ProductBarcode::query()
             ->with(['product.brand', 'product.category', 'product.unit', 'product.barcodes', 'product.variants.barcodes'])
@@ -70,7 +79,36 @@ class PosService
             throw new ApiException('not_found', 'No product matches that barcode.', 404);
         }
 
+        if ($user !== null) {
+            $this->assertProductAllowed($user, $match->product);
+        }
+
         return $this->presentProduct($match->product, $branchId);
+    }
+
+    /**
+     * The department a user is confined to, or null when unrestricted.
+     */
+    private function departmentRestriction(User $user): ?int
+    {
+        if ($user->isSuperAdmin() || $user->can('shifts.operate')) {
+            return null;
+        }
+
+        return $user->departmentId();
+    }
+
+    public function assertProductAllowed(User $user, Product $product): void
+    {
+        $departmentId = $this->departmentRestriction($user);
+
+        if ($departmentId === null || $product->department_id === null) {
+            return;
+        }
+
+        if ((int) $product->department_id !== $departmentId) {
+            throw new ApiException('DEPT_FORBIDDEN', 'This product belongs to another department.', 403);
+        }
     }
 
     public function stockFor(int $branchId, int $productId, ?int $variantId): float
@@ -125,6 +163,7 @@ class PosService
             'sku' => $product->sku ?? '',
             'brand' => $product->brand?->name,
             'category' => $product->category?->name,
+            'department' => $product->relationLoaded('department') ? $product->department?->name : null,
             'unit' => $product->unit?->name,
             'image_url' => $product->image_url,
             'price' => (float) $product->selling_price,
@@ -281,7 +320,7 @@ class PosService
         ];
     }
 
-    public function addItem(PosCart $cart, int $productId, ?int $variantId, float $quantity): PosCart
+    public function addItem(PosCart $cart, int $productId, ?int $variantId, float $quantity, ?User $user = null): PosCart
     {
         if ($quantity <= 0) {
             throw new ApiException('validation_error', 'Quantity must be greater than zero.', 422);
@@ -290,6 +329,10 @@ class PosService
         $product = Product::query()->with('variants')->findOrFail($productId);
         if (! $product->is_active) {
             throw new ApiException('not_sellable', 'This product is not available for sale.', 422);
+        }
+
+        if ($user !== null) {
+            $this->assertProductAllowed($user, $product);
         }
 
         $variant = null;
@@ -425,6 +468,20 @@ class PosService
             throw new ApiException('empty_cart', 'The cart is empty.', 422);
         }
 
+        $restrictedDept = $this->departmentRestriction($user);
+
+        if ($restrictedDept !== null) {
+            $offender = Product::query()
+                ->whereIn('id', array_column($items, 'product_id'))
+                ->whereNotNull('department_id')
+                ->where('department_id', '!=', $restrictedDept)
+                ->exists();
+
+            if ($offender) {
+                throw new ApiException('DEPT_FORBIDDEN', 'Your cart contains a product from another department.', 403);
+            }
+        }
+
         foreach ($items as $line) {
             $available = $cart->branch_id === null
                 ? 0.0
@@ -437,6 +494,28 @@ class PosService
         $method = (string) ($input['method'] ?? 'cash');
         $total = round((float) $cart->total, 2);
         $customer = $cart->customer_id ? Customer::query()->with('account')->find($cart->customer_id) : null;
+
+        $branchId = $cart->branch_id === null ? null : (int) $cart->branch_id;
+
+        // A Sales Representative must operate inside an open sale, which itself requires an open shift.
+        // Users who can run the store shift (Store Manager / admin) transact without a personal sale.
+        $session = $branchId === null ? null : $this->saleSessions->currentForUser($user->id, $branchId);
+        $requireSession = ! $user->can('shifts.operate')
+            && BusinessSetting::bool(ShiftService::SETTING_REQUIRE_SALE_SESSION, true, $branchId);
+
+        if ($requireSession && $session === null) {
+            throw new ApiException('NO_SALE_OPEN', 'Open a sale before taking a payment.', 422);
+        }
+
+        $shift = $session?->shift
+            ?? ($branchId === null ? null : Shift::query()
+                ->where('branch_id', $branchId)
+                ->where('status', 'open')
+                ->latest('opened_at')
+                ->first());
+
+        $shiftId = $shift?->id;
+        $sessionId = $session?->id;
 
         $requiresApproval = false;
         $approvalKind = 'credit';
@@ -457,10 +536,12 @@ class PosService
             }
         }
 
-        $result = DB::transaction(function () use ($cart, $items, $input, $user, $clientRequestId, $method, $total, $customer, $requiresApproval, $approvalKind) {
+        $result = DB::transaction(function () use ($cart, $items, $input, $user, $clientRequestId, $method, $total, $customer, $requiresApproval, $approvalKind, $shiftId, $sessionId) {
             $sale = Sale::create([
                 'business_id' => TenantContext::businessId(),
                 'branch_id' => $cart->branch_id,
+                'shift_id' => $shiftId,
+                'sale_session_id' => $sessionId,
                 'reference' => 'SAL-'.now()->format('ymd').'-'.strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                 'client_request_id' => $clientRequestId,
                 'customer_id' => $cart->customer_id,

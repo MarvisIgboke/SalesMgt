@@ -5,6 +5,7 @@ use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerPaymentController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ExpiryController;
 use App\Http\Controllers\FinanceController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RiskController;
 use App\Http\Controllers\SalesController;
+use App\Http\Controllers\SaleSessionController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ShiftController;
@@ -114,7 +116,14 @@ Route::get('/expenses/categories', [ExpenseController::class, 'categories']);
 Route::get('/expenses/approvals', [ExpenseController::class, 'approvals']);
 Route::post('/expenses/{expense}/decision', [ExpenseController::class, 'decide'])->whereNumber('expense');
 
+// Departments (everyone can view; only the store manager can manage).
+Route::get('/departments', [DepartmentController::class, 'index']);
+Route::post('/departments', [DepartmentController::class, 'store'])->middleware('idempotent');
+Route::put('/departments/{department}', [DepartmentController::class, 'update'])->middleware('idempotent')->whereNumber('department');
+Route::delete('/departments/{department}', [DepartmentController::class, 'destroy'])->whereNumber('department');
+
 // Shifts.
+Route::get('/shifts/history/summary', [ShiftController::class, 'historySummary']);
 Route::get('/shifts', [ShiftController::class, 'history']);
 Route::get('/shifts/config', [ShiftController::class, 'config']);
 Route::put('/shifts/config', [ShiftController::class, 'setConfig']);
@@ -124,6 +133,12 @@ Route::post('/shifts/close', [ShiftController::class, 'close'])->middleware('ide
 Route::post('/shifts/reconcile', [ShiftController::class, 'reconcile']);
 Route::get('/shifts/{shift}', [ShiftController::class, 'show'])->whereNumber('shift');
 Route::post('/shifts/{shift}/movements', [ShiftController::class, 'storeMovement'])->middleware('idempotent')->whereNumber('shift');
+// Sale sessions (a sales rep opens/closes a sale within an open shift).
+Route::get('/sale-sessions', [SaleSessionController::class, 'index']);
+Route::get('/sale-sessions/current', [SaleSessionController::class, 'current']);
+Route::post('/sale-sessions/open', [SaleSessionController::class, 'open'])->middleware('idempotent');
+Route::post('/sale-sessions/{saleSession}/close', [SaleSessionController::class, 'close'])->middleware('idempotent')->whereNumber('saleSession');
+Route::get('/sale-sessions/{saleSession}', [SaleSessionController::class, 'show'])->whereNumber('saleSession');
 
 // Inventory.
 Route::get('/inventory/dashboard', [InventoryController::class, 'dashboard']);

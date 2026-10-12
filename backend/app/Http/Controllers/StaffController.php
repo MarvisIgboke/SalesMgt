@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Models\AuditLog;
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\Department;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Support\ApiResponse;
@@ -27,7 +28,7 @@ class StaffController extends Controller
 
         $paginator = User::query()
             ->where('business_id', TenantContext::businessId())
-            ->with('roles')
+            ->with(['roles', 'department'])
             ->when($request->filled('search'), function ($query) use ($request) {
                 $term = '%'.$request->string('search').'%';
                 $query->where(fn ($q) => $q->where('name', 'like', $term)
@@ -54,7 +55,7 @@ class StaffController extends Controller
 
         $members = User::query()
             ->where('business_id', $businessId)
-            ->with(['roles.permissions', 'permissions'])
+            ->with(['roles.permissions', 'permissions', 'department'])
             ->orderBy('name')
             ->get();
 
@@ -140,6 +141,8 @@ class StaffController extends Controller
                     ->map(fn ($id) => $branchNames[$id] ?? '#'.$id)
                     ->values()
                     ->all(),
+                'department_id' => $member->department_id,
+                'department' => $member->department?->name,
                 'is_active' => (bool) $member->is_active,
                 'last_active_at' => $member->last_login_at?->toIso8601String(),
                 'on_duty' => $onDuty,
@@ -229,6 +232,7 @@ class StaffController extends Controller
             'roles.*' => ['string'],
             'branch_ids' => ['nullable', 'array'],
             'branch_ids.*' => ['integer'],
+            'department_id' => ['nullable', 'integer'],
         ]);
 
         $user = User::create([
@@ -236,6 +240,7 @@ class StaffController extends Controller
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'] ?? null,
+            'department_id' => $this->resolveDepartment($data['department_id'] ?? null),
             'password' => $data['password'] ?? Str::password(12),
             'branch_ids' => $data['branch_ids'] ?? [],
             'is_active' => true,
@@ -247,7 +252,7 @@ class StaffController extends Controller
 
         AuditLog::record('staff.created', 'user', $user->id, $user->only(['name', 'email']));
 
-        return ApiResponse::success($this->present($user->fresh('roles')), 'Staff member created.');
+        return ApiResponse::success($this->present($user->fresh(['roles', 'department'])), 'Staff member created.');
     }
 
     public function update(Request $request, int $staff)
@@ -265,6 +270,7 @@ class StaffController extends Controller
             'roles.*' => ['string'],
             'branch_ids' => ['nullable', 'array'],
             'branch_ids.*' => ['integer'],
+            'department_id' => ['nullable', 'integer'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -281,6 +287,9 @@ class StaffController extends Controller
         if (array_key_exists('branch_ids', $data)) {
             $user->branch_ids = $data['branch_ids'] ?? [];
         }
+        if (array_key_exists('department_id', $data)) {
+            $user->department_id = $this->resolveDepartment($data['department_id']);
+        }
         if (array_key_exists('is_active', $data)) {
             $user->is_active = $data['is_active'];
         }
@@ -296,7 +305,7 @@ class StaffController extends Controller
 
         AuditLog::record('staff.updated', 'user', $user->id, $user->only(['name', 'email']));
 
-        return ApiResponse::success($this->present($user->fresh('roles')), 'Staff member updated.');
+        return ApiResponse::success($this->present($user->fresh(['roles', 'department'])), 'Staff member updated.');
     }
 
     public function roles(Request $request)
@@ -463,7 +472,25 @@ class StaffController extends Controller
     {
         return User::query()
             ->where('business_id', TenantContext::businessId())
+            ->with('department')
             ->findOrFail($id);
+    }
+
+    private function resolveDepartment(mixed $id): ?int
+    {
+        if ($id === null || $id === '') {
+            return null;
+        }
+
+        $department = Department::query()->find((int) $id);
+
+        if ($department === null) {
+            throw new ApiException('DEPARTMENT_INVALID', 'The selected department does not exist.', 422, [
+                'department_id' => ['The selected department does not exist.'],
+            ]);
+        }
+
+        return (int) $department->id;
     }
 
     private function present(User $user): array
@@ -477,6 +504,8 @@ class StaffController extends Controller
             'avatar_url' => $user->avatar_url,
             'roles' => $user->getRoleNames()->values()->all(),
             'branch_ids' => $user->branch_ids ?? [],
+            'department_id' => $user->department_id,
+            'department' => $user->relationLoaded('department') ? $user->department?->name : null,
             'is_active' => (bool) $user->is_active,
             'last_active_at' => $user->last_login_at?->toIso8601String(),
         ];

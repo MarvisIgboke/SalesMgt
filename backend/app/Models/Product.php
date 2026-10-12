@@ -13,6 +13,7 @@ class Product extends Model
 
     protected $fillable = [
         'business_id',
+        'department_id',
         'name',
         'sku',
         'category_id',
@@ -44,6 +45,11 @@ class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
     }
 
     public function brand(): BelongsTo
@@ -79,6 +85,8 @@ class Product extends Model
             'sku' => $this->sku ?? '',
             'brand' => $this->brand?->name,
             'category' => $this->category?->name,
+            'department_id' => $this->department_id,
+            'department' => $this->relationLoaded('department') ? $this->department?->name : null,
             'unit' => $this->unit?->name,
             'image_url' => $this->image_url,
             'barcodes' => $this->relationLoaded('barcodes')

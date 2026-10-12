@@ -28,6 +28,9 @@ const ProductsPage = lazy(() =>
 const CatalogPage = lazy(() =>
   import('@/pages/catalog/catalog-page').then((m) => ({ default: m.CatalogPage })),
 )
+const DepartmentsPage = lazy(() =>
+  import('@/pages/departments/departments-page').then((m) => ({ default: m.DepartmentsPage })),
+)
 const InventoryPage = lazy(() =>
   import('@/pages/inventory/inventory-page').then((m) => ({ default: m.InventoryPage })),
 )
@@ -64,6 +67,9 @@ const ShiftsPage = lazy(() =>
 )
 const ShiftDetailPage = lazy(() =>
   import('@/pages/shifts/shift-detail-page').then((m) => ({ default: m.ShiftDetailPage })),
+)
+const SaleSessionPage = lazy(() =>
+  import('@/pages/shifts/sale-session-page').then((m) => ({ default: m.SaleSessionPage })),
 )
 const ReportsPage = lazy(() =>
   import('@/pages/reports/reports-page').then((m) => ({ default: m.ReportsPage })),
@@ -161,6 +167,14 @@ export const router = createBrowserRouter([
                 ),
               },
               {
+                path: '/departments',
+                element: (
+                  <Page variant="cards">
+                    <DepartmentsPage />
+                  </Page>
+                ),
+              },
+              {
                 path: '/inventory',
                 element: (
                   <Page variant="cards">
@@ -253,6 +267,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Page variant="cards">
                     <ShiftDetailPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/sale-sessions/:id',
+                element: (
+                  <Page variant="cards">
+                    <SaleSessionPage />
                   </Page>
                 ),
               },

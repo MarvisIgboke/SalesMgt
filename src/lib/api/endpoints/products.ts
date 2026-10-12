@@ -8,6 +8,8 @@ export interface Product {
   brand?: string | null
   category?: string | null
   unit?: string | null
+  department_id?: number | null
+  department?: string | null
   image_url?: string | null
   barcodes: string[]
   cost_price: number
@@ -42,6 +44,7 @@ export interface ProductInput {
   brand?: string
   category?: string
   unit?: string
+  department_id?: number | null
   barcodes?: string[]
   cost_price?: number
   selling_price?: number

@@ -11,7 +11,7 @@ class ShiftCashMovement extends Model
     use BelongsToBusiness;
 
     protected $fillable = [
-        'business_id', 'branch_id', 'shift_id', 'type', 'amount',
+        'business_id', 'branch_id', 'shift_id', 'sale_session_id', 'type', 'amount',
         'reference', 'reason', 'created_by',
     ];
 
@@ -25,6 +25,11 @@ class ShiftCashMovement extends Model
     public function shift(): BelongsTo
     {
         return $this->belongsTo(Shift::class);
+    }
+
+    public function saleSession(): BelongsTo
+    {
+        return $this->belongsTo(SaleSession::class);
     }
 
     public function creator(): BelongsTo

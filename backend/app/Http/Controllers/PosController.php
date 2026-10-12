@@ -23,6 +23,7 @@ class PosController extends Controller
             $this->branchId($request),
             $this->perPage($request),
             $request->query('category') ? (string) $request->query('category') : null,
+            $request->user(),
         );
 
         return ApiResponse::paginator($paginator);
@@ -32,7 +33,7 @@ class PosController extends Controller
     {
         $this->authorize($request, ['sales.create', 'sales.view']);
 
-        return ApiResponse::success($this->pos->productForBarcode($barcode, $this->branchId($request)));
+        return ApiResponse::success($this->pos->productForBarcode($barcode, $this->branchId($request), $request->user()));
     }
 
     public function getCart(Request $request)
@@ -56,7 +57,7 @@ class PosController extends Controller
         ]);
 
         $cart = $this->pos->resolveCart($data['reference'] ?? null, $request->user(), $this->branchId($request));
-        $cart = $this->pos->addItem($cart, (int) $data['product_id'], isset($data['variant_id']) ? (int) $data['variant_id'] : null, (float) ($data['quantity'] ?? 1));
+        $cart = $this->pos->addItem($cart, (int) $data['product_id'], isset($data['variant_id']) ? (int) $data['variant_id'] : null, (float) ($data['quantity'] ?? 1), $request->user());
 
         return ApiResponse::success($this->pos->presentCart($cart, $request->user()));
     }

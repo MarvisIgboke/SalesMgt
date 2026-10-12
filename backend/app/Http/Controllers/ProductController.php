@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\ApiException;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Department;
 use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Models\ProductBarcode;
@@ -27,7 +28,7 @@ class ProductController extends Controller
         $branchId = $request->filled('branch_id') ? (int) $request->query('branch_id') : null;
 
         $products = Product::query()
-            ->with(['category', 'brand', 'unit', 'barcodes', 'variants.barcodes'])
+            ->with(['category', 'brand', 'department', 'unit', 'barcodes', 'variants.barcodes'])
             ->when($request->filled('search'), function ($query) use ($request) {
                 $term = '%'.$request->string('search').'%';
                 $query->where(function ($q) use ($term) {
@@ -54,7 +55,7 @@ class ProductController extends Controller
         abort_unless($request->user()->can('products.view') || $request->user()->can('sales.create'), 403);
 
         $branchId = $request->filled('branch_id') ? (int) $request->query('branch_id') : null;
-        $model = $this->find($product)->load(['category', 'brand', 'unit', 'barcodes', 'variants.barcodes']);
+        $model = $this->find($product)->load(['category', 'brand', 'department', 'unit', 'barcodes', 'variants.barcodes']);
 
         return ApiResponse::success(array_merge(
             $model->toApi(true),
@@ -75,6 +76,7 @@ class ProductController extends Controller
             'category_id' => $this->resolveCategory($data['category'] ?? null),
             'brand_id' => $this->resolveBrand($data['brand'] ?? null),
             'unit_id' => $this->resolveUnit($data['unit'] ?? null),
+            'department_id' => $this->resolveDepartment($data['department_id'] ?? null),
             'image_url' => $this->storeImage($request) ?? ($data['image_url'] ?? null),
             'cost_price' => $data['cost_price'] ?? 0,
             'selling_price' => $data['selling_price'] ?? 0,
@@ -87,7 +89,7 @@ class ProductController extends Controller
 
         AuditLog::record('product.created', 'product', $product->id, $product->only(['name', 'sku']));
 
-        return ApiResponse::success($product->load(['category', 'brand', 'unit', 'barcodes', 'variants'])->toApi(true), 'Product created.');
+        return ApiResponse::success($product->load(['category', 'brand', 'department', 'unit', 'barcodes', 'variants'])->toApi(true), 'Product created.');
     }
 
     public function update(Request $request, int $product)
@@ -116,6 +118,9 @@ class ProductController extends Controller
         if (array_key_exists('unit', $data)) {
             $product->unit_id = $this->resolveUnit($data['unit']);
         }
+        if (array_key_exists('department_id', $data)) {
+            $product->department_id = $this->resolveDepartment($data['department_id']);
+        }
 
         $image = $this->storeImage($request);
         if ($image !== null) {
@@ -132,7 +137,7 @@ class ProductController extends Controller
 
         AuditLog::record('product.updated', 'product', $product->id, $product->only(['name', 'sku']));
 
-        return ApiResponse::success($product->load(['category', 'brand', 'unit', 'barcodes', 'variants'])->toApi(true), 'Product updated.');
+        return ApiResponse::success($product->load(['category', 'brand', 'department', 'unit', 'barcodes', 'variants'])->toApi(true), 'Product updated.');
     }
 
     public function destroy(Request $request, int $product)
@@ -257,6 +262,7 @@ class ProductController extends Controller
             'brand' => ['nullable', 'string', 'max:120'],
             'category' => ['nullable', 'string', 'max:120'],
             'unit' => ['nullable', 'string', 'max:60'],
+            'department_id' => ['nullable', 'integer'],
             'barcodes' => ['nullable', 'array'],
             'barcodes.*' => ['string', 'max:64'],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
@@ -301,6 +307,23 @@ class ProductController extends Controller
             ['business_id' => TenantContext::businessId(), 'name' => $name],
             ['code' => Str::lower(Str::substr($name, 0, 3))],
         )->id;
+    }
+
+    private function resolveDepartment(mixed $id): ?int
+    {
+        if ($id === null || $id === '' ) {
+            return null;
+        }
+
+        $department = Department::query()->find((int) $id);
+
+        if ($department === null) {
+            throw new ApiException('DEPARTMENT_INVALID', 'The selected department does not exist.', 422, [
+                'department_id' => ['The selected department does not exist.'],
+            ]);
+        }
+
+        return (int) $department->id;
     }
 
     private function syncBarcodes(Product $product, array $barcodes): void

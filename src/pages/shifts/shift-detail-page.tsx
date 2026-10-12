@@ -6,6 +6,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Banknote,
+  Boxes,
   Calculator,
   CheckCircle2,
   ChevronLeft,
@@ -23,10 +24,11 @@ import {
   ShieldCheck,
   TerminalSquare,
   UserRound,
+  Users,
   Wallet,
   Zap,
 } from 'lucide-react'
-import { shiftApi, type ShiftDetail, type ShiftJournalEvent } from '@/lib/api/endpoints/shifts'
+import { shiftApi, type ShiftDetail, type ShiftJournalEvent, type SaleSessionSummary } from '@/lib/api/endpoints/shifts'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { usePermissions } from '@/lib/use-permissions'
 import { Badge } from '@/components/ui/badge'
@@ -310,6 +312,11 @@ export function ShiftDetailPage() {
             onPrintX={printX}
           />
 
+          <SaleSessionsList
+            sessions={detail.sale_sessions}
+            onOpen={(sessionId) => navigate(`/sale-sessions/${sessionId}`)}
+          />
+
           <DrawerJournal events={detail.journal} />
 
           {isOpen ? (
@@ -557,6 +564,129 @@ function ActionRibbon({
         <Fingerprint className="h-3 w-3 text-primary" />
         Pulse Port: RJ11 • Hardware bridge not detected
       </div>
+    </div>
+  )
+}
+
+function SaleSessionsList({
+  sessions,
+  onOpen,
+}: {
+  sessions: SaleSessionSummary[]
+  onOpen: (sessionId: number) => void
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Users className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">Sales on this Shift</h2>
+        </div>
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+          {sessions.length} {sessions.length === 1 ? 'Sale' : 'Sales'}
+        </span>
+      </div>
+
+      {sessions.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-surface-elevated p-6 text-center">
+          <p className="text-sm font-medium text-foreground">No sales yet</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Reps will appear here once they open their sale on this shift.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {sessions.map((session) => {
+            const stockVariance = session.stock_variance ?? 0
+            const cashVariance = session.variance ?? 0
+            return (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => onOpen(session.id)}
+                className="flex flex-col gap-3 rounded-2xl border border-border bg-surface-elevated p-3.5 text-left transition-colors hover:border-primary/40"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary">
+                      <UserRound className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-foreground">{session.user_name}</p>
+                      <p className="truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {session.reference} • {session.user_role}
+                      </p>
+                    </div>
+                  </div>
+                  <StatusBadge status={session.status} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-lg bg-surface-sunken p-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Sales</p>
+                    <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-foreground">
+                      {formatCurrency(session.sales_total)}
+                    </p>
+                    <p className="font-mono text-[9px] text-muted-foreground">{session.sales_count} txns</p>
+                  </div>
+                  <div className="rounded-lg bg-surface-sunken p-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Opening</p>
+                    <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-foreground">
+                      {formatCurrency(session.opening_balance)}
+                    </p>
+                    <p className="font-mono text-[9px] text-muted-foreground">float</p>
+                  </div>
+                  <div className="rounded-lg bg-surface-sunken p-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Closing</p>
+                    <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-foreground">
+                      {session.closing_amount === null ? '—' : formatCurrency(session.closing_amount)}
+                    </p>
+                    <p className="font-mono text-[9px] text-muted-foreground">
+                      {session.closed_at ? formatDate(session.closed_at, { hour: '2-digit', minute: '2-digit' }) : 'open'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-sunken p-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Variance</p>
+                    <p
+                      className={cn(
+                        'mt-0.5 font-mono text-sm font-bold tabular-nums',
+                        session.status === 'open'
+                          ? 'text-muted-foreground'
+                          : Math.abs(cashVariance) < 0.005
+                            ? 'text-success'
+                            : cashVariance < 0
+                              ? 'text-destructive'
+                              : 'text-warning',
+                      )}
+                    >
+                      {session.status === 'open' ? '—' : `${cashVariance > 0 ? '+' : ''}${formatCurrency(cashVariance)}`}
+                    </p>
+                    <p className="font-mono text-[9px] text-muted-foreground">cash</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Boxes className="h-3 w-3 text-info" />
+                    Stock open {formatCurrency(session.opening_stock_value)} → close{' '}
+                    {session.closing_stock_value === null ? '—' : formatCurrency(session.closing_stock_value)}
+                    {session.status !== 'open' && (
+                      <span className={cn(Math.abs(stockVariance) < 0.005 ? 'text-success' : 'text-warning')}>
+                        ({stockVariance > 0 ? '+' : ''}
+                        {formatCurrency(stockVariance)})
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-1 text-primary">
+                    View sale
+                    <ArrowUpRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

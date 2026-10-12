@@ -10,6 +10,8 @@ export interface StaffMember {
   avatar_url?: string | null
   roles: string[]
   branch_ids: number[]
+  department_id?: number | null
+  department?: string | null
   is_active: boolean
   last_active_at?: string | null
 }
@@ -29,6 +31,7 @@ export interface StaffInput {
   phone?: string
   roles?: string[]
   branch_ids?: number[]
+  department_id?: number | null
   is_active?: boolean
 }
 

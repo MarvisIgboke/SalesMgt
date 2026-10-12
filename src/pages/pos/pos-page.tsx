@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   Eraser,
@@ -21,6 +22,7 @@ import { posApi, type CartItem, type SellableProduct } from '@/lib/api/endpoints
 import { catalogApi } from '@/lib/api/endpoints/products'
 import { customersApi, type Customer } from '@/lib/api/endpoints/customers'
 import { shiftApi, type Shift } from '@/lib/api/endpoints/shifts'
+import { saleSessionApi } from '@/lib/api/endpoints/shifts'
 import { useHardwareScanner } from '@/features/pos/barcode'
 import { ScannerDialog } from '@/features/pos/scanner-dialog'
 import { CartPanel } from '@/features/pos/cart-panel'
@@ -29,6 +31,7 @@ import { usePosCart, getPosError } from '@/features/pos/use-pos-cart'
 import { usePosStore } from '@/features/pos/pos-store'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { usePermissions } from '@/lib/use-permissions'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -103,6 +106,17 @@ export function PosPage() {
     retry: false,
   })
   const shift = shiftQuery.data?.data ?? null
+
+  const { can } = usePermissions()
+  const sessionQuery = useQuery({
+    queryKey: ['sale-sessions', 'current', branchId],
+    queryFn: () => saleSessionApi.current({ branch_id: branchId }),
+    enabled: !!branchId,
+    retry: false,
+  })
+  const session = sessionQuery.data?.data ?? null
+  const requiresSession = !can('shifts.operate')
+  const needsSession = requiresSession && !session
 
   const customerQuery = useQuery({
     queryKey: ['customer', cart?.customer_id],
@@ -209,6 +223,30 @@ export function PosPage() {
         customer={customer}
         onCustomerClick={() => setCustomerOpen(true)}
       />
+
+      {requiresSession && !needsSession && !shift && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-warning">
+            <ShieldAlert className="h-4 w-4" />
+            No store shift is open. A manager must open the shift first.
+          </span>
+          <Link to="/shifts" className="text-xs font-semibold text-warning underline-offset-2 hover:underline">
+            Go to shifts
+          </Link>
+        </div>
+      )}
+
+      {needsSession && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+            <ShieldAlert className="h-4 w-4" />
+            Open your sale before taking payments.
+          </span>
+          <Link to="/shifts" className="text-xs font-semibold text-destructive underline-offset-2 hover:underline">
+            Open sale
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex min-w-0 flex-col gap-3">
@@ -450,7 +488,7 @@ function TillBanner({
   customer: Customer | null
   onCustomerClick: () => void
 }) {
-  const open = shift?.status === 'open' || shift?.status === 'active'
+  const open = shift?.status === 'open'
 
   return (
     <div className="rounded-2xl border border-border/70 bg-surface p-3 shadow-card">

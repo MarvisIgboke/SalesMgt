@@ -16,6 +16,7 @@ final class PermissionCatalog
             'sales.discount',
             'sales.price_override',
             'sales.credit',
+            'sales.session',
         ],
         'Products' => [
             'products.view',
@@ -56,6 +57,10 @@ final class PermissionCatalog
             'staff.create',
             'staff.edit',
             'staff.permissions',
+        ],
+        'Departments' => [
+            'departments.view',
+            'departments.manage',
         ],
         'Shifts' => [
             'shifts.view',
@@ -124,6 +129,7 @@ final class PermissionCatalog
             'purchases.create', 'purchases.approve', 'purchases.receive',
             'staff.view', 'staff.create', 'staff.edit', 'staff.permissions',
             'shifts.view', 'shifts.operate', 'shifts.reconcile',
+            'departments.view', 'departments.manage',
             'wallet.view', 'wallet.transactions',
             'subscription.view',
             'reports.view',
@@ -142,6 +148,7 @@ final class PermissionCatalog
             'expenses.create', 'expenses.approve',
             'purchases.approve',
             'reports.view',
+            'departments.view',
             'wallet.view', 'wallet.transactions',
             'subscription.view',
             'search.view',
@@ -157,6 +164,7 @@ final class PermissionCatalog
             'inventory.view', 'inventory.adjust', 'inventory.receive', 'inventory.transfer', 'inventory.approve',
             'purchases.create', 'purchases.receive',
             'expenses.create',
+            'departments.view',
             'reports.view',
             'search.view',
             'notifications.view',
@@ -167,11 +175,12 @@ final class PermissionCatalog
     {
         return [
             'dashboard.view',
-            'sales.view', 'sales.create', 'sales.edit', 'sales.cancel', 'sales.discount',
+            'sales.view', 'sales.create', 'sales.edit', 'sales.cancel', 'sales.discount', 'sales.session',
             'products.view',
             'customers.view', 'customers.create', 'customers.edit',
+            'departments.view',
             'search.view',
-            'shifts.operate',
+            'shifts.view',
             'notifications.view',
         ];
     }
@@ -185,6 +194,7 @@ final class PermissionCatalog
             'inventory.view',
             'finance.view',
             'staff.view',
+            'departments.view',
             'reports.view',
             'audit.view',
             'search.view',

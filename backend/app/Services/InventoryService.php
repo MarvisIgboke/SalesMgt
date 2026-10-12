@@ -52,6 +52,47 @@ class InventoryService
     }
 
     /**
+     * Branch-wide inventory snapshot: total quantity and cost value plus per-line detail.
+     *
+     * @return array{quantity: float, value: float, lines: array<int, array{product_id: int, variant_id: int|null, quantity: float, value: float}>}
+     */
+    public function branchSnapshot(int $branchId): array
+    {
+        $balances = InventoryBalance::query()
+            ->where('branch_id', $branchId)
+            ->with(['product:id,cost_price', 'variant:id,cost_price'])
+            ->get();
+
+        $quantity = 0.0;
+        $value = 0.0;
+        $lines = [];
+
+        foreach ($balances as $balance) {
+            $unitCost = (float) ($balance->variant?->cost_price ?? $balance->product?->cost_price ?? 0);
+            $lineQty = (float) $balance->quantity;
+            $lineValue = round($lineQty * $unitCost, 2);
+
+            $quantity += $lineQty;
+            $value += $lineValue;
+
+            if ($lineQty != 0.0) {
+                $lines[] = [
+                    'product_id' => (int) $balance->product_id,
+                    'variant_id' => $balance->variant_id === null ? null : (int) $balance->variant_id,
+                    'quantity' => round($lineQty, 3),
+                    'value' => $lineValue,
+                ];
+            }
+        }
+
+        return [
+            'quantity' => round($quantity, 3),
+            'value' => round($value, 2),
+            'lines' => $lines,
+        ];
+    }
+
+    /**
      * Apply a signed stock movement and record the ledger entry.
      */
     public function move(

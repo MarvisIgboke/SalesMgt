@@ -32,6 +32,7 @@ import {
   type Product,
   type ProductInput,
 } from '@/lib/api/endpoints/products'
+import { departmentsApi } from '@/lib/api/endpoints/departments'
 import { inventoryApi } from '@/lib/api/endpoints/inventory'
 import { ScannerDialog } from '@/features/pos/scanner-dialog'
 import { useAppStore } from '@/stores/app'
@@ -90,6 +91,7 @@ interface ProductFormState {
   brand: string
   category: string
   unit: string
+  department_id: number | null
   cost_price: string
   selling_price: string
   tax_rate: string
@@ -104,6 +106,7 @@ const EMPTY_FORM: ProductFormState = {
   brand: '',
   category: '',
   unit: '',
+  department_id: null,
   cost_price: '',
   selling_price: '',
   tax_rate: '',
@@ -119,6 +122,7 @@ function toForm(product: Product): ProductFormState {
     brand: product.brand ?? '',
     category: product.category ?? '',
     unit: product.unit ?? '',
+    department_id: product.department_id ?? null,
     cost_price: product.cost_price ? String(product.cost_price) : '',
     selling_price: product.selling_price ? String(product.selling_price) : '',
     tax_rate: product.tax_rate != null ? String(product.tax_rate) : '',
@@ -1084,6 +1088,12 @@ function ProductEditorDialog({
   const queryClient = useQueryClient()
   const set = (patch: Partial<ProductFormState>) => onChange({ ...form, ...patch })
 
+  const departmentsQuery = useQuery({
+    queryKey: ['departments', { with_counts: false }],
+    queryFn: () => departmentsApi.list(),
+  })
+  const departmentOptions = departmentsQuery.data?.data ?? []
+
   const save = useMutation({
     mutationFn: (input: ProductInput) =>
       product ? productsApi.update(product.id, input) : productsApi.create(input),
@@ -1111,6 +1121,7 @@ function ProductEditorDialog({
       brand: form.brand || undefined,
       category: form.category || undefined,
       unit: form.unit.trim() || undefined,
+      department_id: form.department_id,
       cost_price: form.cost_price ? Number(form.cost_price) : undefined,
       selling_price: form.selling_price ? Number(form.selling_price) : undefined,
       tax_rate: form.tax_rate ? Number(form.tax_rate) : null,
@@ -1204,6 +1215,29 @@ function ProductEditorDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Department</Label>
+            <Select
+              value={form.department_id != null ? String(form.department_id) : '__none'}
+              onValueChange={(v) => set({ department_id: v === '__none' ? null : Number(v) })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Unassigned</SelectItem>
+                {departmentOptions.map((option) => (
+                  <SelectItem key={option.id} value={String(option.id)}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Sales reps can only sell products filed under their own department.
+            </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3">

@@ -29,6 +29,7 @@ import {
   type StaffSummary,
   type StaffSummaryMember,
 } from '@/lib/api/endpoints/staff'
+import { departmentsApi } from '@/lib/api/endpoints/departments'
 import { PageHeader } from '@/components/common/page-header'
 import { ErrorState } from '@/components/common/error-state'
 import { EmptyState } from '@/components/common/empty-state'
@@ -42,6 +43,13 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -987,10 +995,17 @@ function MemberDialog({
   const [isActive, setIsActive] = useState(member?.is_active ?? true)
   const [selectedRoles, setSelectedRoles] = useState<string[]>(member?.roles ?? [])
   const [selectedBranches, setSelectedBranches] = useState<number[]>(member?.branch_ids ?? [])
+  const [departmentId, setDepartmentId] = useState<number | null>(member?.department_id ?? null)
 
   const roles = useQuery({
     queryKey: ['staff', 'roles'],
     queryFn: () => staffApi.roles(),
+    placeholderData: (prev) => prev,
+  })
+
+  const departments = useQuery({
+    queryKey: ['departments', { with_counts: false }],
+    queryFn: () => departmentsApi.list(),
     placeholderData: (prev) => prev,
   })
 
@@ -1028,6 +1043,7 @@ function MemberDialog({
       phone: phone.trim() || undefined,
       roles: selectedRoles,
       branch_ids: selectedBranches,
+      department_id: departmentId,
     }
     if (member) {
       input.is_active = isActive
@@ -1120,6 +1136,28 @@ function MemberDialog({
                 </label>
               ))}
             </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Department</Label>
+            <Select
+              value={departmentId != null ? String(departmentId) : '__none'}
+              onValueChange={(v) => setDepartmentId(v === '__none' ? null : Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Unassigned</SelectItem>
+                {(departments.data?.data ?? []).map((department) => (
+                  <SelectItem key={department.id} value={String(department.id)}>
+                    {department.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Sales reps only ring up products filed under their department.
+            </p>
           </div>
           {member && (
             <div className="flex items-center justify-between rounded-lg border border-border/70 p-3">
