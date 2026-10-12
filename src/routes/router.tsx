@@ -68,6 +68,9 @@ const ShiftsPage = lazy(() =>
 const ShiftDetailPage = lazy(() =>
   import('@/pages/shifts/shift-detail-page').then((m) => ({ default: m.ShiftDetailPage })),
 )
+const ShiftHistoryPage = lazy(() =>
+  import('@/pages/shifts/shift-history-page').then((m) => ({ default: m.ShiftHistoryPage })),
+)
 const SaleSessionPage = lazy(() =>
   import('@/pages/shifts/sale-session-page').then((m) => ({ default: m.SaleSessionPage })),
 )
@@ -259,6 +262,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Page variant="cards">
                     <ShiftsPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/shifts/history',
+                element: (
+                  <Page variant="cards">
+                    <ShiftHistoryPage />
                   </Page>
                 ),
               },

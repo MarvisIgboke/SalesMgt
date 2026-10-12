@@ -28,6 +28,7 @@ export interface Shift {
   stock_variance?: number | null
   sales_count?: number
   notes?: string | null
+  summary?: ShiftSummary | null
 }
 
 export interface ShiftReconciliation {
@@ -179,6 +180,43 @@ export interface ShiftConfig {
   require_sale_session: boolean
 }
 
+export interface ShiftSummary {
+  shift_id: number
+  status: ShiftStatus
+  opening_cash: number
+  cash_sales: number
+  digital_sales: number
+  refunds_total: number
+  drops_total: number
+  payouts_total: number
+  sales_total: number
+  sales_count: number
+  expected_cash: number
+  actual_cash: number | null
+  variance: number | null
+  payment_breakdown: Array<{ method: string; amount: number; count: number }>
+}
+
+export interface ShiftHistorySummary {
+  branch_id: number | null
+  range: { from: string | null; to: string | null }
+  totals: {
+    total_count: number
+    closed_count: number
+    open_count: number
+    cash_sales: number
+    digital_sales: number
+    refunds_total: number
+    drops_total: number
+    payouts_total: number
+    sales_count: number
+    cash_reconciled: number
+    net_variance: number
+    accuracy_pct: number
+  }
+  filters: { all: number; balanced: number; overage: number; variance: number }
+}
+
 export const shiftApi = {
   config: () => http.get<ApiEnvelope<ShiftConfig>>('/shifts/config'),
 
@@ -201,6 +239,9 @@ export const shiftApi = {
 
   history: (params?: { page?: number; per_page?: number; status?: ShiftStatus }) =>
     http.get<Paginated<Shift>>('/shifts', { params }),
+
+  historySummary: (params?: { branch_id?: number; from?: string; to?: string }) =>
+    http.get<ApiEnvelope<ShiftHistorySummary>>('/shifts/history/summary', { params }),
 
   detail: (shiftId: number | string) =>
     http.get<ApiEnvelope<ShiftDetail>>(`/shifts/${shiftId}`),

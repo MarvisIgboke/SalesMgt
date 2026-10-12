@@ -281,23 +281,34 @@ function ManagerView() {
           <p className="text-xs text-muted-foreground">
             {history.data?.meta ? `${history.data.meta.total} shifts` : 'Shift history'}
           </p>
-          <div className="w-44">
-            <Select
-              value={historyStatus}
-              onValueChange={(value) => {
-                setHistoryPage(1)
-                setHistoryStatus(value)
-              }}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 text-primary"
+              onClick={() => navigate('/shifts/history')}
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="closed">Closed</SelectItem>
-              </SelectContent>
-            </Select>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+              Shift History &amp; Audits
+            </Button>
+            <div className="w-44">
+              <Select
+                value={historyStatus}
+                onValueChange={(value) => {
+                  setHistoryPage(1)
+                  setHistoryStatus(value)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
