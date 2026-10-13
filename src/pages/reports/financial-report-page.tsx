@@ -66,7 +66,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
-import { cn, formatCurrency, formatDate, formatNumber, formatRelative } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatNumber, formatRelative, saveBlob } from '@/lib/utils'
 
 type ReportCategory = 'financial' | 'sales' | 'inventory' | 'statements'
 
@@ -157,9 +157,12 @@ export function FinancialReportPage() {
         to: summary?.period.to,
         branch_id: params.branch_id,
       }),
-    onSuccess: (res) => {
-      toast.success(`${res.data.title} · ${res.data.format.toUpperCase()} ready`, {
-        description: res.data.filename,
+    onSuccess: async (res) => {
+      const { title, format, filename } = res.data
+      const blob = await reportsApi.download(filename)
+      saveBlob(blob, filename)
+      toast.success(`${title} · ${format.toUpperCase()} ready`, {
+        description: filename,
       })
     },
     onError: (err) => {

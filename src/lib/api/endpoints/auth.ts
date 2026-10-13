@@ -78,4 +78,14 @@ export const authApi = {
     phone?: string | null
     plan_id?: number
   }) => http.post<ApiEnvelope<AuthSession>>('/auth/register', input),
+
+  forgotPassword: (input: { email: string }) =>
+    http.post<ApiEnvelope<{ sent: boolean }>>('/auth/forgot-password', input),
+
+  resetPassword: (input: {
+    token: string
+    email: string
+    password: string
+    password_confirmation: string
+  }) => http.post<ApiEnvelope<null>>('/auth/reset-password', input),
 }

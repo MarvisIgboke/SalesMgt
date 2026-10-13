@@ -1,5 +1,6 @@
 import { http } from '../client'
 import type { ApiEnvelope, Paginated } from '../types'
+import type { ReceiptConfig } from './settings'
 
 export interface SellableVariant {
   id: number
@@ -129,6 +130,7 @@ export interface Receipt {
   payment_status: string
   payment_methods: Array<{ method: PaymentMethod; amount: number }>
   created_at: string
+  config?: ReceiptConfig
   qr_verification?: { payload: string; url?: string }
 }
 

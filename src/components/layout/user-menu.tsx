@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Settings, User as UserIcon } from 'lucide-react'
+import { BookOpen, LogOut, Settings, User as UserIcon } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +68,10 @@ export function UserMenu() {
         <DropdownMenuItem onClick={() => navigate('/settings')}>
           <Settings />
           Settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/docs')}>
+          <BookOpen />
+          Documentation
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

@@ -2,7 +2,8 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0"
@@ -18,8 +19,39 @@
       content="Premium multi-branch sales management ecosystem for retail, supermarkets, pharmacies, restaurants and more."
     />
     <title>SalesMgt</title>
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: #f4f8fb;
+        transition: opacity 0.35s ease;
+        animation: app-splash-auto 0.4s ease 4s forwards;
+      }
+      #app-splash img {
+        width: min(74vw, 460px);
+        height: auto;
+        display: block;
+      }
+      #app-splash.app-splash--hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      @keyframes app-splash-auto {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="app-splash" aria-hidden="true">
+      <img src="/brand/salesmgt-logo.jpeg" alt="SalesMgt" />
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

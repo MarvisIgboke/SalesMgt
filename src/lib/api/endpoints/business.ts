@@ -144,8 +144,7 @@ export interface SubscriptionPlan {
   description?: string | null
   staff_limit?: number | null
   branch_limit?: number | null
-  product_limit?: number | null
-  transaction_limit?: number | null
+  duration_months?: number
   monthly_price?: number | null
   quarterly_price?: number | null
   annual_price?: number | null
@@ -162,8 +161,7 @@ export interface PlanInput {
   description?: string | null
   staff_limit?: number | null
   branch_limit?: number | null
-  product_limit?: number | null
-  transaction_limit?: number | null
+  duration_months?: number
   monthly_price?: number | null
   quarterly_price?: number | null
   annual_price?: number | null

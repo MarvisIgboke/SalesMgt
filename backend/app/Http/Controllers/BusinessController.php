@@ -20,8 +20,10 @@ use Illuminate\Support\Str;
 
 class BusinessController extends Controller
 {
-    public function __construct(private readonly BusinessContextService $context)
-    {
+    public function __construct(
+        private readonly BusinessContextService $context,
+        private readonly \App\Services\AllocationService $allocations,
+    ) {
     }
 
     public function context(Request $request)
@@ -256,6 +258,26 @@ class BusinessController extends Controller
             }
         }
 
+        // Enforce the branch allowance from the active plan (null = unlimited).
+        $branchLimit = Subscription::withoutGlobalScope('tenant-business')
+            ->where('business_id', $targetBusinessId)
+            ->latest('id')
+            ->first()?->limit('branch_limit');
+
+        if ($branchLimit !== null) {
+            $existingBranches = Branch::withoutGlobalScope('tenant-business')
+                ->where('business_id', $targetBusinessId)
+                ->count();
+
+            if ($existingBranches >= $branchLimit) {
+                throw new ApiException(
+                    'BRANCH_LIMIT',
+                    sprintf('Your plan allows at most %d branch(es). Upgrade to add more.', $branchLimit),
+                    422,
+                );
+            }
+        }
+
         $branch = Branch::create([
             'business_id' => $targetBusinessId,
             'name' => $data['name'],
@@ -266,6 +288,8 @@ class BusinessController extends Controller
             'is_active' => $data['is_active'] ?? true,
             'defaults' => ['currency' => 'NGN'],
         ]);
+
+        $this->allocations->attachBranch($targetBusinessId, $branch->id);
 
         // Auto-create Store Manager for new branch
         if ($targetBusinessId) {
@@ -282,6 +306,8 @@ class BusinessController extends Controller
                 if (method_exists($mgr, 'assignRole')) {
                     $mgr->assignRole('Store Manager');
                 }
+
+                $this->allocations->attachUser($targetBusinessId, $mgr->id);
             }
         }
 
@@ -457,6 +483,14 @@ class BusinessController extends Controller
 
             if ($branch === null) {
                 throw new ApiException('BRANCH_NOT_FOUND', 'The selected branch could not be found.', 404);
+            }
+
+            if (! $this->allocations->allowsBranch((int) $branch->business_id, (int) $branch->id)) {
+                throw new ApiException(
+                    'BRANCH_NOT_ALLOCATED',
+                    'This branch is not included in your plan allocation. Contact your administrator.',
+                    403,
+                );
             }
 
             if (! $user->hasBranchAccess($branch->id)) {

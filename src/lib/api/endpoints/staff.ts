@@ -137,6 +137,7 @@ export interface StaffPermissionDetail {
 export interface SyncPermissionsResult {
   user_id: number
   permissions: string[]
+  revoked_permissions?: string[]
   effective_permissions: string[]
 }
 

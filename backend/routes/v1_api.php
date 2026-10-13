@@ -14,9 +14,11 @@ use App\Http\Controllers\AuditController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PosController;
+use App\Http\Controllers\PrinterController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ResourceAllocationController;
 use App\Http\Controllers\RiskController;
 use App\Http\Controllers\SalesController;
 use App\Http\Controllers\SaleSessionController;
@@ -25,6 +27,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\SubscriptionInvoiceController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WalletController;
@@ -55,6 +58,18 @@ Route::get('/subscription/plans', [SubscriptionController::class, 'plans']);
 Route::post('/subscription/plans', [SubscriptionController::class, 'storePlan']);
 Route::put('/subscription/plans/{plan}', [SubscriptionController::class, 'updatePlan'])->whereNumber('plan');
 Route::delete('/subscription/plans/{plan}', [SubscriptionController::class, 'destroyPlan'])->whereNumber('plan');
+
+// Resource allocation (business admin) & subscription invoices.
+Route::get('/subscription/allocation', [ResourceAllocationController::class, 'show']);
+Route::put('/subscription/allocation', [ResourceAllocationController::class, 'update']);
+Route::get('/subscription/invoices', [SubscriptionInvoiceController::class, 'mine']);
+
+// Platform invoices (Super Admin).
+Route::get('/invoices', [SubscriptionInvoiceController::class, 'index']);
+Route::post('/invoices/generate', [SubscriptionInvoiceController::class, 'generate']);
+Route::get('/invoices/{invoice}', [SubscriptionInvoiceController::class, 'show'])->whereNumber('invoice');
+Route::post('/invoices/{invoice}/mark-paid', [SubscriptionInvoiceController::class, 'markPaid'])->whereNumber('invoice');
+Route::post('/invoices/{invoice}/mark-unpaid', [SubscriptionInvoiceController::class, 'markUnpaid'])->whereNumber('invoice');
 
 // Dashboard.
 Route::get('/dashboard', [DashboardController::class, 'show']);
@@ -225,8 +240,18 @@ Route::get('/search', [SearchController::class, 'global']);
 
 // Settings.
 Route::get('/settings/preferences', [SettingsController::class, 'preferences']);
+Route::get('/settings/receipt', [SettingsController::class, 'receipt']);
+Route::put('/settings/receipt', [SettingsController::class, 'updateReceipt']);
 Route::get('/settings', [SettingsController::class, 'show']);
 Route::put('/settings', [SettingsController::class, 'update']);
+
+// Printers (per-branch hardware registry).
+Route::get('/printers', [PrinterController::class, 'index']);
+Route::post('/printers', [PrinterController::class, 'store'])->middleware('idempotent');
+Route::put('/printers/{printer}', [PrinterController::class, 'update'])->whereNumber('printer');
+Route::delete('/printers/{printer}', [PrinterController::class, 'destroy'])->whereNumber('printer');
+Route::post('/printers/{printer}/default', [PrinterController::class, 'setDefault'])->whereNumber('printer');
+Route::post('/printers/{printer}/ping', [PrinterController::class, 'ping'])->whereNumber('printer');
 
 // Audit & risk.
 Route::get('/audit-logs', [AuditController::class, 'index']);

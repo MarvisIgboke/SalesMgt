@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Gem, Pencil, Plus, Store, Trash2, ShieldAlert } from 'lucide-react'
+import { Building2, Gem, Pencil, Plus, Trash2, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/common/page-header'
 import { LoadingState } from '@/components/common/loading-state'
 import { ErrorState } from '@/components/common/error-state'
@@ -74,7 +74,7 @@ export function PlansPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="Subscription plans"
-        description="Create and manage platform plans, then assign them to stores."
+        description="Create and manage platform plans, then assign them to businesses."
       >
         <Button size="sm" onClick={openCreate}>
           <Plus className="h-4 w-4" />
@@ -88,7 +88,7 @@ export function PlansPage() {
       {!plans.isLoading && !plans.isError && planList.length === 0 && (
         <EmptyState
           title="No plans yet"
-          description="Create your first subscription plan to offer to stores."
+          description="Create your first subscription plan to offer to businesses."
           icon={<Gem className="h-6 w-6" />}
           action={
             <Button variant="outline" size="sm" onClick={openCreate}>
@@ -151,8 +151,8 @@ function PlanCard({
   const limits = plan.limits ?? {
     staff_limit: plan.staff_limit,
     branch_limit: plan.branch_limit,
-    product_limit: plan.product_limit,
-    transaction_limit: plan.transaction_limit,
+    duration_months: plan.duration_months,
+    grace_days: plan.grace_days,
   }
 
   return (
@@ -220,8 +220,8 @@ function PlanCard({
               Edit
             </Button>
             <Button variant="secondary" size="sm" onClick={onAssign}>
-              <Store className="h-3.5 w-3.5" />
-              Assign to store
+              <Building2 className="h-3.5 w-3.5" />
+              Assign to business
             </Button>
             <Button
               variant="ghost"
@@ -247,8 +247,7 @@ function PlanDialog({ plan, onClose }: { plan: SubscriptionPlan | null; onClose:
     description: plan?.description ?? '',
     staff_limit: plan?.staff_limit ?? '',
     branch_limit: plan?.branch_limit ?? '',
-    product_limit: plan?.product_limit ?? '',
-    transaction_limit: plan?.transaction_limit ?? '',
+    duration_months: plan?.duration_months ?? 1,
     monthly_price: plan?.monthly_price ?? '',
     quarterly_price: plan?.quarterly_price ?? '',
     annual_price: plan?.annual_price ?? '',
@@ -294,8 +293,7 @@ function PlanDialog({ plan, onClose }: { plan: SubscriptionPlan | null; onClose:
       description: form.description.trim() || null,
       staff_limit: num(form.staff_limit),
       branch_limit: num(form.branch_limit),
-      product_limit: num(form.product_limit),
-      transaction_limit: num(form.transaction_limit),
+      duration_months: num(form.duration_months) ?? 1,
       monthly_price: num(form.monthly_price),
       quarterly_price: num(form.quarterly_price),
       annual_price: num(form.annual_price),
@@ -314,7 +312,8 @@ function PlanDialog({ plan, onClose }: { plan: SubscriptionPlan | null; onClose:
         <DialogHeader>
           <DialogTitle>{plan ? 'Edit plan' : 'New plan'}</DialogTitle>
           <DialogDescription>
-            Limits left blank are unlimited. Enforcement happens in the backend.
+            Limits apply to the business as a whole and are shared across all of its branches.
+            Leave a limit blank for unlimited.
           </DialogDescription>
         </DialogHeader>
 
@@ -380,28 +379,16 @@ function PlanDialog({ plan, onClose }: { plan: SubscriptionPlan | null; onClose:
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="product_limit">Product limit</Label>
+            <Label htmlFor="duration_months">Validity (months)</Label>
             <Input
-              id="product_limit"
+              id="duration_months"
               type="number"
-              min={0}
-              value={form.product_limit}
-              onChange={(e) => set('product_limit', e.target.value)}
-              placeholder="unlimited"
+              min={1}
+              value={form.duration_months}
+              onChange={(e) => set('duration_months', e.target.value)}
+              placeholder="1"
             />
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="transaction_limit">Transaction limit</Label>
-            <Input
-              id="transaction_limit"
-              type="number"
-              min={0}
-              value={form.transaction_limit}
-              onChange={(e) => set('transaction_limit', e.target.value)}
-              placeholder="unlimited"
-            />
-          </div>
-
           <div className="grid gap-2">
             <Label htmlFor="monthly_price">Monthly price</Label>
             <Input
@@ -523,16 +510,17 @@ function AssignPlanDialog({
         <DialogHeader>
           <DialogTitle>Assign “{plan.name}”</DialogTitle>
           <DialogDescription>
-            Apply this plan to a store. This replaces its current subscription plan.
+            Apply this plan to a business. Its resources are shared across every branch in the
+            business. This replaces the current subscription plan.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <Label>Store</Label>
+            <Label>Business</Label>
             <Select value={businessId} onValueChange={setBusinessId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a store" />
+                <SelectValue placeholder="Select a business" />
               </SelectTrigger>
               <SelectContent>
                 {options.map((business) => (

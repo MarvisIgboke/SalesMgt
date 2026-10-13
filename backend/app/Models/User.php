@@ -7,13 +7,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Contracts\Permission;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, HasRoles, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
+    use HasRoles {
+        hasPermissionTo as protected spatieHasPermissionTo;
+    }
 
     /**
      * The attributes that are mass assignable.
@@ -30,6 +35,7 @@ class User extends Authenticatable
         'avatar_url',
         'branch_ids',
         'is_active',
+        'revoked_permissions',
     ];
 
     /**
@@ -56,6 +62,7 @@ class User extends Authenticatable
             'two_factor_confirmed_at' => 'datetime',
             'last_login_at' => 'datetime',
             'branch_ids' => 'array',
+            'revoked_permissions' => 'array',
             'is_active' => 'boolean',
             'password' => 'hashed',
         ];
@@ -91,5 +98,50 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->hasRole('Super Admin');
+    }
+
+    /**
+     * Resolve a permission identifier to its string name, when possible.
+     */
+    private function permissionName(mixed $permission): ?string
+    {
+        if (is_string($permission)) {
+            return $permission;
+        }
+
+        if ($permission instanceof Permission) {
+            return $permission->name;
+        }
+
+        if ($permission instanceof \BackedEnum) {
+            return (string) $permission->value;
+        }
+
+        return null;
+    }
+
+    /**
+     * Honor explicitly revoked permissions on top of Spatie's role/direct checks.
+     */
+    public function hasPermissionTo($permission, $guardName = null): bool
+    {
+        $name = $this->permissionName($permission);
+
+        if ($name !== null && in_array($name, $this->revoked_permissions ?? [], true)) {
+            return false;
+        }
+
+        return $this->spatieHasPermissionTo($permission, $guardName);
+    }
+
+    public function getAllPermissions(): Collection
+    {
+        $revoked = $this->revoked_permissions ?? [];
+
+        return $this->permissions
+            ->merge($this->getPermissionsViaRoles())
+            ->reject(fn ($permission) => in_array($permission->name, $revoked, true))
+            ->sort()
+            ->values();
     }
 }

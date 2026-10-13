@@ -12,12 +12,17 @@ use App\Support\ApiResponse;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
     private const VIP_SPEND = 1_000_000;
 
     private const CREDIT_DUE = 500_000;
+
+    public const SEGMENTS = ['Wholesale B2B', 'Retail VIP', 'Retail'];
+
+    public const TIERS = ['Platinum B2B', 'Black Card VIP', 'Gold', 'Silver', 'Standard'];
 
     public function __construct(private readonly CustomerLedgerService $ledger)
     {
@@ -91,11 +96,13 @@ class CustomerController extends Controller
         foreach ($customers as $customer) {
             $balance = (float) ($customer->account->balance ?? 0);
             $limit = $customer->credit_limit === null ? null : (float) $customer->credit_limit;
+            $hasCredit = $limit !== null && $limit > 0;
             $row = $lifetime->get($customer->id);
             $spend = (float) ($row->value ?? 0);
             $orders = (int) ($row->orders ?? 0);
-            $isWholesale = $limit !== null && $limit > 0;
-            $isVip = ! $isWholesale && $spend >= self::VIP_SPEND;
+            $segment = $customer->segment ?: ($hasCredit ? 'Wholesale B2B' : ($spend >= self::VIP_SPEND ? 'Retail VIP' : 'Retail'));
+            $isWholesale = $segment === 'Wholesale B2B';
+            $isVip = $segment === 'Retail VIP';
             $isWalkin = $customer->phone === null && $customer->email === null;
 
             $arTotal += $balance;
@@ -106,15 +113,18 @@ class CustomerController extends Controller
                 $dueHigh++;
             }
             if ($isWholesale) {
+                $wholesale++;
+            } elseif ($isVip) {
+                $vip++;
+            }
+
+            if ($hasCredit) {
                 $creditAccounts++;
                 $limitTotal += $limit;
                 $available += max($limit - $balance, 0);
                 if ($balance <= $limit) {
                     $currentAccounts++;
                 }
-                $wholesale++;
-            } elseif ($isVip) {
-                $vip++;
             }
             if ($isWalkin) {
                 $walkin++;
@@ -128,7 +138,7 @@ class CustomerController extends Controller
             $lifetimeOrders += $orders;
 
             $recentRow = $recent->get($customer->id);
-            $utilisation = $isWholesale && $limit > 0 ? round(($balance / $limit) * 100, 1) : 0.0;
+            $utilisation = $hasCredit ? round(($balance / $limit) * 100, 1) : 0.0;
 
             $cards[] = [
                 'id' => $customer->id,
@@ -136,14 +146,14 @@ class CustomerController extends Controller
                 'email' => $customer->email,
                 'phone' => $customer->phone,
                 'address' => $customer->address,
-                'account_code' => $this->accountCode($customer->id, $isWholesale ? 'B2B' : ($isVip ? 'VIP' : 'RET')),
-                'segment' => $isWholesale ? 'Wholesale B2B' : ($isVip ? 'Retail VIP' : 'Retail'),
-                'tier' => $this->tier($spend, $limit),
+                'account_code' => $this->accountCode($customer->id, $this->accountPrefix($segment)),
+                'segment' => $segment,
+                'tier' => $customer->tier ?: $this->tier($spend, $limit),
                 'credit_limit' => $limit,
                 'outstanding_balance' => round($balance, 2),
                 'credit_remaining' => $limit === null ? null : round($limit - $balance, 2),
                 'utilisation_pct' => $utilisation,
-                'over_limit' => $isWholesale && $balance > $limit,
+                'over_limit' => $hasCredit && $balance > $limit,
                 'lifetime_spend' => round($spend, 2),
                 'orders_total' => $orders,
                 'orders_30d' => (int) ($recentRow->orders ?? 0),
@@ -232,6 +242,15 @@ class CustomerController extends Controller
             ->keyBy('customer_id');
     }
 
+    private function accountPrefix(string $segment): string
+    {
+        return match ($segment) {
+            'Wholesale B2B' => 'B2B',
+            'Retail VIP' => 'VIP',
+            default => 'RET',
+        };
+    }
+
     private function accountCode(int $id, string $prefix): string
     {
         return $prefix.'-'.str_pad((string) $id, 4, '0', STR_PAD_LEFT);
@@ -265,6 +284,8 @@ class CustomerController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'address' => ['nullable', 'string', 'max:255'],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
+            'segment' => ['nullable', 'string', Rule::in(self::SEGMENTS)],
+            'tier' => ['nullable', 'string', Rule::in(self::TIERS)],
         ]);
 
         $customer = Customer::create([
@@ -274,6 +295,8 @@ class CustomerController extends Controller
             'phone' => $data['phone'] ?? null,
             'address' => $data['address'] ?? null,
             'credit_limit' => $data['credit_limit'] ?? null,
+            'segment' => $data['segment'] ?? null,
+            'tier' => $data['tier'] ?? null,
             'created_by' => $request->user()->id,
         ]);
 
@@ -296,9 +319,11 @@ class CustomerController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'address' => ['nullable', 'string', 'max:255'],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
+            'segment' => ['nullable', 'string', Rule::in(self::SEGMENTS)],
+            'tier' => ['nullable', 'string', Rule::in(self::TIERS)],
         ]);
 
-        $customer->fill(array_intersect_key($data, array_flip(['name', 'email', 'phone', 'address', 'credit_limit'])));
+        $customer->fill(array_intersect_key($data, array_flip(['name', 'email', 'phone', 'address', 'credit_limit', 'segment', 'tier'])));
         $customer->save();
 
         AuditLog::record('customer.updated', 'customer', $customer->id, $customer->only(['name']));
@@ -377,6 +402,8 @@ class CustomerController extends Controller
             'phone' => $customer->phone,
             'address' => $customer->address,
             'credit_limit' => $creditLimit,
+            'segment' => $customer->segment,
+            'tier' => $customer->tier,
             'outstanding_balance' => round($balance, 2),
             'credit_remaining' => $creditLimit === null ? null : round($creditLimit - $balance, 2),
             'total_purchases' => (float) ($customer->total_purchases ?? 0),

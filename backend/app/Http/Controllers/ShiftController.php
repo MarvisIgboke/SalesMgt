@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\ApiException;
 use App\Models\Shift;
+use App\Models\User;
 use App\Services\ShiftService;
 use App\Models\AuditLog;
 use App\Support\ApiResponse;
@@ -55,9 +56,17 @@ class ShiftController extends Controller
     {
         abort_unless($request->user()->can('shifts.operate'), 403);
 
+        $user = $request->user();
+
+        if (! $user->hasRole('Store Manager')) {
+            throw new ApiException('SHIFT_MANAGER_ONLY', 'Only a Store Manager can open a shift.', 403);
+        }
+
         $data = $request->validate([
             'branch_id' => ['nullable', 'integer'],
             'opening_cash' => ['nullable', 'numeric', 'min:0'],
+            'assigned_user_ids' => ['nullable', 'array'],
+            'assigned_user_ids.*' => ['integer'],
         ]);
 
         $branchId = $data['branch_id'] ?? TenantContext::branchId();
@@ -66,15 +75,58 @@ class ShiftController extends Controller
             throw new ApiException('BRANCH_REQUIRED', 'A branch is required to open a shift.', 422);
         }
 
-        if (! $request->user()->hasBranchAccess($branchId)) {
+        if (! $user->hasBranchAccess($branchId)) {
             throw new ApiException('BRANCH_ACCESS', 'You do not have access to this branch.', 403);
         }
 
-        $shift = $this->shifts->open($request->user()->id, $branchId, (float) ($data['opening_cash'] ?? 0));
+        $assignedUserIds = collect($data['assigned_user_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
 
-        AuditLog::record('shift.opened', 'shift', $shift->id, ['opening_cash' => $shift->opening_cash]);
+        $this->assertAssignableReps($branchId, $assignedUserIds->all());
+
+        $shift = $this->shifts->open($user->id, $branchId, (float) ($data['opening_cash'] ?? 0), $assignedUserIds->all());
+
+        AuditLog::record('shift.opened', 'shift', $shift->id, [
+            'opening_cash' => $shift->opening_cash,
+            'assigned_user_ids' => $shift->assignedUserIds(),
+        ]);
 
         return ApiResponse::success($this->present($shift->load(['branch', 'user'])), 'Shift opened.');
+    }
+
+    /**
+     * Only active Sales Representatives registered to the shift's branch may be
+     * assigned to operate on it.
+     *
+     * @param  array<int, int>  $userIds
+     */
+    private function assertAssignableReps(int $branchId, array $userIds): void
+    {
+        if ($userIds === []) {
+            return;
+        }
+
+        $reps = User::query()
+            ->where('business_id', TenantContext::businessId())
+            ->whereIn('id', $userIds)
+            ->get()
+            ->keyBy('id');
+
+        foreach ($userIds as $userId) {
+            $rep = $reps->get($userId);
+
+            if ($rep === null || ! $rep->hasRole('Sales Representative')) {
+                throw new ApiException('SHIFT_REP_INVALID', 'Only sales representatives can be assigned to a shift.', 422);
+            }
+
+            $branchIds = array_map('intval', is_array($rep->branch_ids) ? $rep->branch_ids : []);
+
+            if (! in_array($branchId, $branchIds, true)) {
+                throw new ApiException('SHIFT_REP_BRANCH', 'Sales reps must be registered to this branch to be assigned.', 422);
+            }
+        }
     }
 
     public function close(Request $request)
@@ -305,12 +357,14 @@ class ShiftController extends Controller
     {
         return [
             'id' => $shift->id,
+            'reference' => $shift->reference,
             'branch_id' => $shift->branch_id,
             'branch_name' => $shift->branch?->name ?? '',
             'branch_code' => $shift->branch?->code ?? '',
             'user_id' => $shift->user_id,
             'user_name' => $shift->user?->name ?? '',
             'user_role' => $shift->user?->getRoleNames()->first() ?? 'Staff',
+            'assigned_user_ids' => $shift->assignedUserIds(),
             'status' => $shift->status,
             'opened_at' => $shift->opened_at?->toIso8601String() ?? $shift->created_at?->toIso8601String(),
             'closed_at' => $shift->closed_at?->toIso8601String(),

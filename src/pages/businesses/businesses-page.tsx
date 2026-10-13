@@ -1,23 +1,16 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, Gem, Plus, ShieldAlert } from 'lucide-react'
+import { Ban, Building2, CheckCircle2, Clock4, Gem, Plus, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/common/page-header'
 import { LoadingState } from '@/components/common/loading-state'
 import { ErrorState } from '@/components/common/error-state'
 import { EmptyState } from '@/components/common/empty-state'
 import { StatusBadge } from '@/components/common/status-badge'
+import { StatCard } from '@/components/common/stat-card'
+import { Pagination } from '@/components/common/pagination'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -39,15 +32,18 @@ import {
   type Business,
 } from '@/lib/api/endpoints/business'
 import { useAuthStore } from '@/stores/auth'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatNumber } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
+
+const PER_PAGE = 10
 
 export function BusinessesPage() {
   const queryClient = useQueryClient()
   const isSuperAdmin = useAuthStore((s) => s.session?.user.roles.includes('Super Admin') ?? false)
   const [createOpen, setCreateOpen] = useState(false)
   const [assigning, setAssigning] = useState<Business | null>(null)
+  const [page, setPage] = useState(1)
 
   const businesses = useQuery({
     queryKey: ['businesses'],
@@ -71,19 +67,59 @@ export function BusinessesPage() {
 
   const rows = businesses.data?.data ?? []
 
+  const stats = {
+    total: rows.length,
+    active: rows.filter((b) => b.subscription.status === 'active').length,
+    trial: rows.filter((b) => b.subscription.status === 'trial').length,
+    suspended: rows.filter((b) =>
+      ['suspended', 'expired'].includes(b.subscription.status),
+    ).length,
+  }
+
+  const lastPage = Math.max(1, Math.ceil(rows.length / PER_PAGE))
+  const safePage = Math.min(page, lastPage)
+  const pageRows = rows.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE)
+
   const reload = () => void queryClient.invalidateQueries({ queryKey: ['businesses'] })
 
   return (
     <div className="animate-fade-in">
       <PageHeader
         title="Businesses"
-        description="Register new stores and manage their subscription plan."
+        description="Register new businesses and manage their subscription plan."
       >
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4" />
           New business
         </Button>
       </PageHeader>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total Businesses"
+          value={formatNumber(stats.total)}
+          icon={<Building2 className="h-4 w-4" />}
+          loading={businesses.isLoading}
+        />
+        <StatCard
+          label="Active"
+          value={formatNumber(stats.active)}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          loading={businesses.isLoading}
+        />
+        <StatCard
+          label="On Trial"
+          value={formatNumber(stats.trial)}
+          icon={<Clock4 className="h-4 w-4" />}
+          loading={businesses.isLoading}
+        />
+        <StatCard
+          label="Suspended / Expired"
+          value={formatNumber(stats.suspended)}
+          icon={<Ban className="h-4 w-4" />}
+          loading={businesses.isLoading}
+        />
+      </div>
 
       {businesses.isLoading && <LoadingState variant="table" rows={6} />}
       {businesses.isError && (
@@ -103,73 +139,61 @@ export function BusinessesPage() {
         />
       )}
 
-      {!businesses.isLoading && !businesses.isError && rows.length > 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Business</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Currency</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Expiry</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((business) => (
-                  <TableRow key={business.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
-                          <Building2 className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{business.name}</p>
-                          <p className="font-mono text-[11px] text-muted-foreground">
-                            {business.slug}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {business.email ?? '—'}
-                      <span className="block text-[11px] text-muted-foreground/70">
-                        {business.phone ?? ''}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {business.currency}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-sm font-medium text-foreground">
-                          {business.subscription.plan}
-                        </span>
-                        <StatusBadge
-                          status={business.subscription.status}
-                          label={business.subscription.status}
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {business.subscription.expiry_date
-                        ? formatDate(business.subscription.expiry_date)
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => setAssigning(business)}>
-                        <Gem className="h-3.5 w-3.5" />
-                        Assign plan
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      {pageRows.length > 0 && (
+        <div className="space-y-3">
+          {pageRows.map((business) => (
+            <div
+              key={business.id}
+              className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/40 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 items-center gap-4">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <Building2 className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-foreground">{business.name}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
+                    <span>{business.slug}</span>
+                    {business.email && <span>{business.email}</span>}
+                    {business.phone && <span>{business.phone}</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                <div className="flex flex-col gap-1 sm:items-end">
+                  <span className="text-sm font-medium text-foreground">
+                    {business.subscription.plan}
+                  </span>
+                  <StatusBadge
+                    status={business.subscription.status}
+                    label={business.subscription.status}
+                  />
+                </div>
+                <span className="hidden items-center gap-1 rounded-lg bg-surface-sunken px-2 py-1 font-mono text-[11px] text-muted-foreground lg:inline-flex">
+                  {business.currency}
+                  {business.subscription.expiry_date && (
+                    <span>· {formatDate(business.subscription.expiry_date)}</span>
+                  )}
+                </span>
+                <Button variant="outline" size="sm" onClick={() => setAssigning(business)}>
+                  <Gem className="h-3.5 w-3.5" />
+                  Assign plan
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length > PER_PAGE && (
+        <Pagination
+          page={safePage}
+          lastPage={lastPage}
+          total={rows.length}
+          totalLabel="businesses"
+          onPageChange={setPage}
+        />
       )}
 
       {createOpen && <CreateBusinessDialog onClose={() => setCreateOpen(false)} onSaved={reload} />}

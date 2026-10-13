@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Subscription;
+use App\Models\SubscriptionInvoice;
 use App\Support\ApiResponse;
 use App\Support\TenantContext;
 use Closure;
@@ -27,6 +28,11 @@ class EnsureSubscriptionActive
             return $next($request);
         }
 
+        // Platform administrators are never gated by a business subscription.
+        if ($request->user()?->isSuperAdmin()) {
+            return $next($request);
+        }
+
         $subscription = Subscription::query()
             ->where('business_id', $businessId)
             ->latest('id')
@@ -47,6 +53,18 @@ class EnsureSubscriptionActive
 
         if ($lapsed || $trialEnded) {
             return $this->blocked($request, 'Your subscription has expired. Please renew to continue.');
+        }
+
+        // The business stays locked until the current period invoice is settled.
+        $unpaidInvoice = SubscriptionInvoice::withoutGlobalScope('tenant-business')
+            ->where('business_id', $businessId)
+            ->where('status', 'unpaid')
+            ->whereNotNull('due_at')
+            ->whereDate('due_at', '<=', now())
+            ->exists();
+
+        if ($unpaidInvoice) {
+            return $this->blocked($request, 'Your subscription invoice is unpaid. Settle it to continue.');
         }
 
         return $next($request);

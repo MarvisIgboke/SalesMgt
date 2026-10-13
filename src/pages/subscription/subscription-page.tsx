@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   BadgeCheck,
   Banknote,
   BarChart3,
+  CalendarClock,
   CheckCircle2,
   CreditCard,
   Crown,
@@ -20,6 +22,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { subscriptionApi } from '@/lib/api/endpoints/business'
+import { billingApi, type SubscriptionInvoice } from '@/lib/api/endpoints/billing'
 import { PageHeader } from '@/components/common/page-header'
 import { LoadingState } from '@/components/common/loading-state'
 import { ErrorState } from '@/components/common/error-state'
@@ -27,6 +30,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { usePermissions } from '@/lib/use-permissions'
 
 interface PlanInfo {
   id: number
@@ -35,8 +39,7 @@ interface PlanInfo {
   description?: string | null
   staff_limit?: number | null
   branch_limit?: number | null
-  product_limit?: number | null
-  transaction_limit?: number | null
+  duration_months?: number | null
   monthly_price?: number | null
   annual_price?: number | null
   currency?: string
@@ -50,8 +53,7 @@ function getLimitMeta(key: string): { label: string; icon: React.ReactNode } {
   const map: Record<string, { label: string; icon: React.ReactNode }> = {
     staff_limit: { label: 'Cashier & Staff Seats', icon: <Users className="h-4 w-4" /> },
     branch_limit: { label: 'Branch Outlets', icon: <Store className="h-4 w-4" /> },
-    product_limit: { label: 'Product SKUs', icon: <Layers className="h-4 w-4" /> },
-    transaction_limit: { label: 'Monthly Transactions', icon: <BarChart3 className="h-4 w-4" /> },
+    duration_months: { label: 'Billing Cycle (months)', icon: <CalendarClock className="h-4 w-4" /> },
     register_limit: { label: 'POS Registers / Tills', icon: <CreditCard className="h-4 w-4" /> },
     api_limit: { label: 'API & Cloud Sync', icon: <Zap className="h-4 w-4" /> },
     warehouse_limit: { label: 'Warehouses', icon: <Warehouse className="h-4 w-4" /> },
@@ -59,7 +61,22 @@ function getLimitMeta(key: string): { label: string; icon: React.ReactNode } {
   return map[key] ?? { label: key.replace(/_/g, ' '), icon: <CheckCircle2 className="h-4 w-4" /> }
 }
 
+function invoiceStatusLabel(invoice: SubscriptionInvoice): string {
+  if (invoice.status === 'paid') return 'Paid'
+  if (invoice.status === 'void') return 'Void'
+  return invoice.is_overdue ? 'Overdue' : 'Not Paid'
+}
+
+function invoiceStatusVariant(invoice: SubscriptionInvoice): 'success' | 'warning' | 'muted' | 'destructive' {
+  if (invoice.status === 'paid') return 'success'
+  if (invoice.status === 'void') return 'muted'
+  return invoice.is_overdue ? 'destructive' : 'warning'
+}
+
 export function SubscriptionPage() {
+  const { can } = usePermissions()
+  const canManageAllocation = can('subscription.manage')
+
   const current = useQuery({
     queryKey: ['subscription'],
     queryFn: () => subscriptionApi.get(),
@@ -71,6 +88,17 @@ export function SubscriptionPage() {
     queryFn: () => subscriptionApi.plans(),
     placeholderData: (prev) => prev,
   })
+
+  const invoices = useQuery({
+    queryKey: ['subscription', 'invoices'],
+    queryFn: () => billingApi.myInvoices({ per_page: 6 }),
+    placeholderData: (prev) => prev,
+  })
+
+  const invoiceRows = useMemo<SubscriptionInvoice[]>(
+    () => invoices.data?.data ?? [],
+    [invoices.data],
+  )
 
   const subscription = current.data?.data
   const planList = useMemo(() => (plans.data?.data as PlanInfo[] | undefined) ?? [], [plans.data])
@@ -184,7 +212,19 @@ export function SubscriptionPage() {
                   <BarChart3 className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-semibold">Resource Allocation & Limits</h3>
                 </div>
-                <span className="text-xs text-muted-foreground">Configured from plan</span>
+                <span className="text-xs text-muted-foreground">
+                  {canManageAllocation ? (
+                    <Link
+                      to="/subscription/allocation"
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      Manage allocation
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  ) : (
+                    'Shared across all branches'
+                  )}
+                </span>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {limits.map(([key, value]) => {
@@ -296,21 +336,58 @@ export function SubscriptionPage() {
             <FileText className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold">Invoice History</h3>
           </div>
-          <span className="text-xs text-muted-foreground">From purchasing module</span>
+          <span className="text-xs text-muted-foreground">
+            {invoices.isFetching ? 'Loading…' : `${invoiceRows.length} recent`}
+          </span>
         </div>
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <ReceiptText className="h-6 w-6 text-muted-foreground" />
-            <p className="text-sm font-medium">Invoices available in Purchasing › Invoices</p>
-            <p className="text-xs text-muted-foreground">Use the Purchasing module to view/download invoices</p>
-            <Button variant="outline" size="sm" className="mt-2 gap-1.5" asChild>
-              <a href="#/purchasing/invoices">
-                <ArrowRight className="h-3.5 w-3.5" />
-                Go to Purchasing Invoices
-              </a>
-            </Button>
+
+        {invoices.isError && <ErrorState error={invoices.error} onRetry={() => invoices.refetch()} />}
+
+        {!invoices.isError && invoiceRows.length === 0 && (
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <ReceiptText className="h-6 w-6 text-muted-foreground" />
+              <p className="text-sm font-medium">No subscription invoices yet</p>
+              <p className="text-xs text-muted-foreground">
+                Invoices are generated monthly by the platform administrator.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {invoiceRows.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {invoiceRows.map((invoice) => (
+              <div
+                key={invoice.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <ReceiptText className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{invoice.number}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {invoice.period_start && invoice.period_end
+                        ? `${formatDate(invoice.period_start, { dateStyle: 'medium' })} – ${formatDate(invoice.period_end, { dateStyle: 'medium' })}`
+                        : 'Billing period'}
+                      {invoice.due_at ? ` · due ${formatDate(invoice.due_at, { dateStyle: 'medium' })}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold tabular-nums">
+                    {formatCurrency(invoice.amount, invoice.currency)}
+                  </span>
+                  <Badge variant={invoiceStatusVariant(invoice)}>
+                    {invoiceStatusLabel(invoice)}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">

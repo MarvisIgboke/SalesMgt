@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { Building2, Lock, Mail, Phone, ShieldCheck, User } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
@@ -239,10 +239,18 @@ export function RegisterPage() {
             </button>
           </div>
 
-          <div className="mt-5 flex items-center justify-center gap-1.5 text-center">
-            <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
-            <p className="text-[11px] text-muted-foreground">
-              By registering you agree to our terms of service.
+          <div className="mt-5 flex items-start justify-center gap-1.5 text-center">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              By creating an account you agree to our{' '}
+              <Link to="/terms" className="font-medium text-primary hover:underline">
+                Terms &amp; Conditions
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" className="font-medium text-primary hover:underline">
+                Privacy Policy
+              </Link>
+              .
             </p>
           </div>
         </form>

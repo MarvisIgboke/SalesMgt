@@ -70,6 +70,18 @@ class DemoSeeder extends Seeder
         );
         $cashier->assignRole('Sales Representative');
 
+        $businessAdmin = User::updateOrCreate(
+            ['email' => 'owner@demo.local'],
+            [
+                'name' => 'Demo Business Owner',
+                'business_id' => $business->id,
+                'password' => 'password',
+                'phone' => '+2348000000003',
+                'is_active' => true,
+            ],
+        );
+        $businessAdmin->assignRole('Business Admin');
+
         Wallet::updateOrCreate(
             ['business_id' => $business->id],
             ['currency' => 'NGN', 'balance' => 250000, 'pending' => 0],

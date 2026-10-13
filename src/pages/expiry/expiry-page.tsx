@@ -210,7 +210,7 @@ export function ExpiryPage() {
           <Input
             defaultValue={search}
             onChange={(event) => searchDebounced.current(event.target.value)}
-            placeholder="Search batch #, SKU, drug lot, barcodeâ€¦"
+            placeholder="Search product, SKU or barcodeâ€¦"
             className="h-11 rounded-xl pl-10 pr-16"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">

@@ -130,15 +130,43 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
 
           {receipt && (
             <div className="rounded-xl border border-border/60 bg-surface p-4">
+              {receipt.config?.show_logo && receipt.config.logo_url && (
+                <div className="mb-2 flex justify-center">
+                  <img src={receipt.config.logo_url} alt="" className="h-10 object-contain" />
+                </div>
+              )}
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-foreground">{receipt.business_name}</p>
+                <p className="text-sm font-bold text-foreground">
+                  {receipt.config?.name || receipt.business_name}
+                </p>
                 <Badge variant={result.status === 'completed' ? 'success' : 'warning'}>
                   {receipt.payment_status.replace(/_/g, ' ')}
                 </Badge>
               </div>
+              {receipt.config?.header && (
+                <p className="mt-1 text-[11px] text-muted-foreground">{receipt.config.header}</p>
+              )}
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {receipt.branch_name} · {receipt.receipt_number}
               </p>
+              {(receipt.config?.show_address ||
+                receipt.config?.show_phone ||
+                receipt.config?.show_email) && (
+                <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                  {receipt.config?.show_address && receipt.config.address && (
+                    <p>{receipt.config.address}</p>
+                  )}
+                  {receipt.config?.show_phone && receipt.config.phone && (
+                    <p>Tel: {receipt.config.phone}</p>
+                  )}
+                  {receipt.config?.show_email && receipt.config.email && (
+                    <p>{receipt.config.email}</p>
+                  )}
+                </div>
+              )}
+              {receipt.config?.tax_id && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">TIN: {receipt.config.tax_id}</p>
+              )}
 
               <div className="mt-3 max-h-40 space-y-2 overflow-y-auto">
                 {receipt.items.map((item) => (
@@ -159,7 +187,9 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
                 {receipt.discount_total > 0 && (
                   <Row label="Discount" value={`-${formatCurrency(receipt.discount_total)}`} />
                 )}
-                <Row label="Tax" value={formatCurrency(receipt.tax_total)} />
+                {(receipt.config?.show_tax_breakdown ?? true) && (
+                  <Row label="Tax" value={formatCurrency(receipt.tax_total)} />
+                )}
                 <div className="mt-1 flex items-center justify-between text-sm font-bold text-foreground">
                   <span>Total</span>
                   <span className="tabular-nums">{formatCurrency(receipt.total)}</span>
@@ -171,16 +201,37 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
 
               <Separator className="my-3" />
               <p className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>{receipt.customer_name ?? 'Walk-in customer'}</span>
-                <span>{formatDateTime(receipt.created_at)}</span>
+                {(receipt.config?.show_customer ?? true) ? (
+                  <span>{receipt.customer_name ?? 'Walk-in customer'}</span>
+                ) : (
+                  <span />
+                )}
+                {(receipt.config?.show_datetime ?? true) && (
+                  <span>{formatDateTime(receipt.created_at)}</span>
+                )}
               </p>
-              {receipt.qr_verification && (
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-2">
-                  <span className="text-lg">▦</span>
-                  <p className="text-[10px] text-muted-foreground">
+              {(receipt.config?.show_cashier ?? true) && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Served by {receipt.staff_name}
+                </p>
+              )}
+              {(receipt.config?.show_qr ?? true) && receipt.qr_verification && (
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-border/60 bg-surface-sunken p-2">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-foreground text-[8px] font-bold text-background">
+                    QR
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground">
                     Verification QR embedded in the receipt payload.
-                  </p>
+                  </span>
                 </div>
+              )}
+              {receipt.config?.footer && (
+                <>
+                  <Separator className="my-3" />
+                  <p className="text-center text-[10px] text-muted-foreground">
+                    {receipt.config.footer}
+                  </p>
+                </>
               )}
             </div>
           )}

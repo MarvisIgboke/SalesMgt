@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter } from 'react-router-dom'
 import { AppShell } from '@/components/layout/app-shell'
 import { AuthBootstrap } from './auth-bootstrap'
 import { RequireAuth, RedirectIfAuthed } from './guards'
@@ -55,6 +55,9 @@ const FinancePage = lazy(() =>
 const ExpensesPage = lazy(() =>
   import('@/pages/expenses/expenses-page').then((m) => ({ default: m.ExpensesPage })),
 )
+const PrintersPage = lazy(() =>
+  import('@/pages/printers/printers-page').then((m) => ({ default: m.PrintersPage })),
+)
 const StaffPage = lazy(() => import('@/pages/staff/staff-page').then((m) => ({ default: m.StaffPage })))
 const BranchesPage = lazy(() =>
   import('@/pages/branches/branches-page').then((m) => ({ default: m.BranchesPage })),
@@ -89,11 +92,24 @@ const SubscriptionPage = lazy(() =>
 const PlansPage = lazy(() =>
   import('@/pages/subscription/plans-page').then((m) => ({ default: m.PlansPage })),
 )
+const ResourceAllocationPage = lazy(() =>
+  import('@/pages/subscription/resource-allocation-page').then((m) => ({
+    default: m.ResourceAllocationPage,
+  })),
+)
+const InvoicesPage = lazy(() =>
+  import('@/pages/invoices/invoices-page').then((m) => ({ default: m.InvoicesPage })),
+)
 const WalletPage = lazy(() =>
   import('@/pages/wallet/wallet-page').then((m) => ({ default: m.WalletPage })),
 )
 const SettingsPage = lazy(() =>
   import('@/pages/settings/settings-page').then((m) => ({ default: m.SettingsPage })),
+)
+const ReceiptSettingsPage = lazy(() =>
+  import('@/pages/settings/receipt-settings-page').then((m) => ({
+    default: m.ReceiptSettingsPage,
+  })),
 )
 const ProfilePage = lazy(() =>
   import('@/pages/settings/profile-page').then((m) => ({ default: m.ProfilePage })),
@@ -101,11 +117,29 @@ const ProfilePage = lazy(() =>
 const NotFoundPage = lazy(() =>
   import('@/pages/not-found-page').then((m) => ({ default: m.NotFoundPage })),
 )
+const LandingPage = lazy(() =>
+  import('@/pages/landing/landing-page').then((m) => ({ default: m.LandingPage })),
+)
+const DocsPage = lazy(() =>
+  import('@/pages/docs/docs-page').then((m) => ({ default: m.DocsPage })),
+)
+const TermsPage = lazy(() =>
+  import('@/pages/legal/terms-page').then((m) => ({ default: m.TermsPage })),
+)
+const PrivacyPage = lazy(() =>
+  import('@/pages/legal/privacy-page').then((m) => ({ default: m.PrivacyPage })),
+)
 const LoginPage = lazy(() =>
   import('@/pages/auth/login-page').then((m) => ({ default: m.LoginPage })),
 )
 const RegisterPage = lazy(() =>
   import('@/pages/auth/register-page').then((m) => ({ default: m.RegisterPage })),
+)
+const ForgotPasswordPage = lazy(() =>
+  import('@/pages/auth/forgot-password-page').then((m) => ({ default: m.ForgotPasswordPage })),
+)
+const ResetPasswordPage = lazy(() =>
+  import('@/pages/auth/reset-password-page').then((m) => ({ default: m.ResetPasswordPage })),
 )
 const UsersPage = lazy(() =>
   import('@/pages/users/users-page').then((m) => ({ default: m.UsersPage })),
@@ -116,8 +150,40 @@ export const router = createBrowserRouter([
     element: <AuthBootstrap />,
     children: [
       {
+        path: '/docs',
+        element: (
+          <Page variant="cards">
+            <DocsPage />
+          </Page>
+        ),
+      },
+      {
+        path: '/terms',
+        element: (
+          <Page variant="cards">
+            <TermsPage />
+          </Page>
+        ),
+      },
+      {
+        path: '/privacy',
+        element: (
+          <Page variant="cards">
+            <PrivacyPage />
+          </Page>
+        ),
+      },
+      {
         element: <RedirectIfAuthed />,
         children: [
+          {
+            path: '/',
+            element: (
+              <Page variant="cards">
+                <LandingPage />
+              </Page>
+            ),
+          },
           {
             path: '/login',
             element: (
@@ -134,6 +200,22 @@ export const router = createBrowserRouter([
               </Page>
             ),
           },
+          {
+            path: '/forgot-password',
+            element: (
+              <Page variant="cards">
+                <ForgotPasswordPage />
+              </Page>
+            ),
+          },
+          {
+            path: '/reset-password',
+            element: (
+              <Page variant="cards">
+                <ResetPasswordPage />
+              </Page>
+            ),
+          },
         ],
       },
       {
@@ -142,7 +224,6 @@ export const router = createBrowserRouter([
           {
             element: <AppShell />,
             children: [
-              { index: true, element: <Navigate to="/dashboard" replace /> },
               {
                 path: '/dashboard',
                 element: (
@@ -236,6 +317,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Page variant="cards">
                     <SuppliersPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/printers',
+                element: (
+                  <Page variant="cards">
+                    <PrintersPage />
                   </Page>
                 ),
               },
@@ -344,6 +433,22 @@ export const router = createBrowserRouter([
                 ),
               },
               {
+                path: '/subscription/allocation',
+                element: (
+                  <Page variant="cards">
+                    <ResourceAllocationPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/invoices',
+                element: (
+                  <Page variant="cards">
+                    <InvoicesPage />
+                  </Page>
+                ),
+              },
+              {
                 path: '/users',
                 element: (
                   <Page variant="cards">
@@ -372,6 +477,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Page variant="cards">
                     <ProfilePage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/settings/receipt',
+                element: (
+                  <Page variant="cards">
+                    <ReceiptSettingsPage />
                   </Page>
                 ),
               },

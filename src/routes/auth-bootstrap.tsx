@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import { BrandMark } from '@/components/layout/brand'
+import { BrandImage } from '@/components/layout/brand'
 
 /**
  * Hydrates the auth session from a persisted token before rendering
@@ -22,7 +22,7 @@ export function AuthBootstrap() {
     return (
       <div className="grid min-h-dvh place-items-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <BrandMark className="h-12 w-12 animate-pulse" />
+          <BrandImage className="h-12 animate-pulse" />
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       </div>
@@ -33,7 +33,7 @@ export function AuthBootstrap() {
     return (
       <div className="grid min-h-dvh place-items-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <BrandMark className="h-12 w-12 animate-pulse" />
+          <BrandImage className="h-12 animate-pulse" />
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           <p className="text-xs text-muted-foreground">Restoring session…</p>
         </div>

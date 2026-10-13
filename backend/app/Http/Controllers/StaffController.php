@@ -100,8 +100,13 @@ class StaffController extends Controller
             $sale = $todaySales->get($member->id);
 
             $direct = $member->permissions->pluck('name');
-            $viaRoles = $member->roles->flatMap(fn (Role $role) => $role->permissions->pluck('name'));
-            $effective = $direct->merge($viaRoles)->unique()->values()->all();
+            $viaRoles = $member->roles->flatMap(fn ($role) => $role->permissions->pluck('name'));
+            $revoked = $member->revoked_permissions ?? [];
+            $effective = $direct->merge($viaRoles)
+                ->unique()
+                ->reject(fn (string $permission) => in_array($permission, $revoked, true))
+                ->values()
+                ->all();
 
             $isCashier = in_array('shifts.operate', $effective, true) || in_array('sales.create', $effective, true);
             $isInventory = array_filter($effective, fn (string $p) => str_starts_with($p, 'inventory.')) !== [];
@@ -219,9 +224,30 @@ class StaffController extends Controller
         return ApiResponse::success($this->present($this->find($staff)));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, \App\Services\AllocationService $allocations)
     {
         abort_unless($request->user()->can('staff.create'), 403);
+
+        $businessId = (int) TenantContext::businessId();
+
+        $staffLimit = \App\Models\Subscription::withoutGlobalScope('tenant-business')
+            ->where('business_id', $businessId)
+            ->latest('id')
+            ->first()?->limit('staff_limit');
+
+        if ($staffLimit !== null) {
+            $existingStaff = User::withoutGlobalScope('tenant-business')
+                ->where('business_id', $businessId)
+                ->count();
+
+            if ($existingStaff >= $staffLimit) {
+                throw new ApiException(
+                    'STAFF_LIMIT',
+                    sprintf('Your plan allows at most %d staff account(s). Upgrade to add more.', $staffLimit),
+                    422,
+                );
+            }
+        }
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
@@ -236,7 +262,7 @@ class StaffController extends Controller
         ]);
 
         $user = User::create([
-            'business_id' => TenantContext::businessId(),
+            'business_id' => $businessId,
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'] ?? null,
@@ -249,6 +275,8 @@ class StaffController extends Controller
         if (! empty($data['roles'])) {
             $user->syncRoles($this->allowedRoles($data['roles']));
         }
+
+        $allocations->attachUser($businessId, $user->id);
 
         AuditLog::record('staff.created', 'user', $user->id, $user->only(['name', 'email']));
 
@@ -389,23 +417,31 @@ class StaffController extends Controller
             'permissions.*' => ['string'],
         ]);
 
-        $requested = array_values(array_intersect($data['permissions'], PermissionCatalog::all()));
+        $desired = array_values(array_intersect($data['permissions'], PermissionCatalog::all()));
 
         if (! $request->user()->isSuperAdmin()) {
             $actorPermissions = $request->user()->getAllPermissions()->pluck('name')->all();
-            $requested = array_values(array_intersect($requested, $actorPermissions));
+            $desired = array_values(array_intersect($desired, $actorPermissions));
         }
 
-        $user->syncPermissions($requested);
+        $rolePermissions = $user->getPermissionsViaRoles()->pluck('name')->unique()->values()->all();
+        $direct = array_values(array_diff($desired, $rolePermissions));
+        $revoked = array_values(array_diff($rolePermissions, $desired));
 
-        AuditLog::record('staff.permissions_synced', 'user', $user->id, ['permissions' => $requested]);
+        $user->syncPermissions($direct);
+        $user->forceFill(['revoked_permissions' => $revoked !== [] ? $revoked : null])->save();
+        $user->unsetRelation('permissions')->unsetRelation('roles');
 
-        $fresh = User::with(['permissions', 'roles.permissions'])->findOrFail($user->id);
+        AuditLog::record('staff.permissions_synced', 'user', $user->id, [
+            'granted' => $direct,
+            'revoked' => $revoked,
+        ]);
 
         return ApiResponse::success([
-            'user_id' => $fresh->id,
-            'permissions' => $fresh->getDirectPermissions()->pluck('name')->values()->all(),
-            'effective_permissions' => $fresh->getAllPermissions()->pluck('name')->values()->all(),
+            'user_id' => $user->id,
+            'permissions' => $user->getDirectPermissions()->pluck('name')->values()->all(),
+            'revoked_permissions' => $user->revoked_permissions ?? [],
+            'effective_permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
         ], 'Permissions updated.');
     }
 

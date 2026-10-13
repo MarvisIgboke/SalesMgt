@@ -8,6 +8,7 @@ import {
   Users,
   ShoppingBag,
   Truck,
+  Printer,
   Wallet,
   ReceiptText,
   UserCog,
@@ -70,6 +71,7 @@ export const navSections: NavSection[] = [
       { label: 'Expiry Manager', path: '/inventory/expiry', icon: CalendarClock, section: 'operations', permissions: ['inventory.view'], badge: { key: 'expiring', variant: 'destructive' } },
       { label: 'Purchasing', path: '/purchasing', icon: ShoppingBag, section: 'operations', permissions: ['purchases.create', 'purchases.approve', 'purchases.receive'] },
       { label: 'Suppliers', path: '/suppliers', icon: Truck, section: 'operations', permissions: ['purchases.create', 'purchases.approve', 'purchases.receive'] },
+      { label: 'Printers', path: '/printers', icon: Printer, section: 'operations', permissions: ['printers.view'] },
     ],
   },
   {
@@ -89,8 +91,10 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Reports', path: '/reports', icon: BarChart3, section: 'system', permissions: ['reports.view'] },
       { label: 'Financial Report', path: '/reports/financial', icon: Landmark, section: 'system', permissions: ['reports.view'] },
+      { label: 'Receipt Settings', path: '/settings/receipt', icon: ReceiptText, section: 'system', permissions: ['settings.receipt'] },
       { label: 'Notifications', path: '/notifications', icon: Bell, section: 'system', permissions: ['notifications.view'] },
       { label: 'Subscription', path: '/subscription', icon: CreditCard, section: 'system', permissions: ['subscription.view'] },
+      { label: 'Resource Allocation', path: '/subscription/allocation', icon: Layers, section: 'system', permissions: ['subscription.manage'] },
       { label: 'Settings', path: '/settings', icon: Settings, section: 'system' },
     ],
   },
@@ -100,6 +104,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Businesses', path: '/businesses', icon: Building2, section: 'platform', superAdminOnly: true },
       { label: 'Plans', path: '/subscription/plans', icon: Gem, section: 'platform', superAdminOnly: true },
+      { label: 'Invoices', path: '/invoices', icon: ReceiptText, section: 'platform', superAdminOnly: true },
       { label: 'Users', path: '/users', icon: Users, section: 'platform', superAdminOnly: true },
     ],
   },

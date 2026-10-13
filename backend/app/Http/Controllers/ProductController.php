@@ -82,6 +82,7 @@ class ProductController extends Controller
             'selling_price' => $data['selling_price'] ?? 0,
             'tax_rate' => $data['tax_rate'] ?? 0,
             'requires_expiry' => (bool) ($data['requires_expiry'] ?? false),
+            'expiry_date' => $data['expiry_date'] ?? null,
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
 
@@ -106,6 +107,7 @@ class ProductController extends Controller
             'selling_price' => $data['selling_price'] ?? $product->selling_price,
             'tax_rate' => $data['tax_rate'] ?? $product->tax_rate,
             'requires_expiry' => $data['requires_expiry'] ?? $product->requires_expiry,
+            'expiry_date' => array_key_exists('expiry_date', $data) ? $data['expiry_date'] : $product->expiry_date,
             'is_active' => $data['is_active'] ?? $product->is_active,
         ]);
 
@@ -269,6 +271,7 @@ class ProductController extends Controller
             'selling_price' => ['nullable', 'numeric', 'min:0'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'requires_expiry' => ['nullable', 'boolean'],
+            'expiry_date' => ['nullable', 'date'],
             'is_active' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:4096'],
             'image_url' => ['nullable', 'string', 'max:2048'],

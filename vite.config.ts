@@ -13,14 +13,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons/*.png', 'offline.html'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png', 'brand/*.jpeg', 'icons/*.png', 'offline.html'],
       manifest: {
         name: 'SalesMgt',
         short_name: 'SalesMgt',
         description:
           'Premium multi-branch sales management ecosystem for retail, supermarkets, pharmacies, restaurants and more.',
         theme_color: '#0a0a0b',
-        background_color: '#0a0a0b',
+        background_color: '#f4f8fb',
         display: 'standalone',
         orientation: 'any',
         scope: '/',
@@ -48,9 +48,12 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,jpeg,ico,woff2}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),

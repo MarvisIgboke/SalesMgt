@@ -48,6 +48,46 @@ class Subscription extends Model
     }
 
     /**
+     * Resolve a numeric plan limit, preferring the snapshot stored on the
+     * subscription and falling back to the linked plan. Null means unlimited.
+     */
+    public function limit(string $key): ?int
+    {
+        $limits = $this->limits;
+
+        if (is_array($limits) && array_key_exists($key, $limits) && $limits[$key] !== null) {
+            return (int) $limits[$key];
+        }
+
+        $value = $this->plan?->{$key};
+
+        return $value === null ? null : (int) $value;
+    }
+
+    public function graceDays(): int
+    {
+        $limits = $this->limits;
+
+        if (is_array($limits) && array_key_exists('grace_days', $limits) && $limits['grace_days'] !== null) {
+            return (int) $limits['grace_days'];
+        }
+
+        return (int) ($this->plan?->grace_days ?? 0);
+    }
+
+    public function durationMonths(): int
+    {
+        $months = $this->limit('duration_months') ?? (int) ($this->plan?->duration_months ?? 1);
+
+        return max(1, $months);
+    }
+
+    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SubscriptionInvoice::class);
+    }
+
+    /**
      * Shape a SubscriptionInfo payload for the API.
      */
     public function toInfo(): array
@@ -68,8 +108,7 @@ class Subscription extends Model
         return [
             'staff_limit' => null,
             'branch_limit' => null,
-            'product_limit' => null,
-            'transaction_limit' => null,
+            'duration_months' => 1,
         ];
     }
 }

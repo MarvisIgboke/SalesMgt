@@ -16,6 +16,7 @@ export interface Product {
   selling_price: number
   tax_rate?: number | null
   requires_expiry: boolean
+  expiry_date?: string | null
   is_active: boolean
   has_variants: boolean
   variants?: ProductVariant[]
@@ -50,6 +51,7 @@ export interface ProductInput {
   selling_price?: number
   tax_rate?: number | null
   requires_expiry?: boolean
+  expiry_date?: string | null
   is_active?: boolean
   image?: File | null
 }

@@ -1,6 +1,11 @@
 import { http } from '../client'
 import type { ApiEnvelope, Paginated } from '../types'
 
+export const CUSTOMER_SEGMENTS = ['Wholesale B2B', 'Retail VIP', 'Retail'] as const
+export const CUSTOMER_TIERS = ['Platinum B2B', 'Black Card VIP', 'Gold', 'Silver', 'Standard'] as const
+export type CustomerSegment = (typeof CUSTOMER_SEGMENTS)[number]
+export type CustomerTier = (typeof CUSTOMER_TIERS)[number]
+
 export interface Customer {
   id: number
   name: string
@@ -8,6 +13,8 @@ export interface Customer {
   phone?: string | null
   address?: string | null
   credit_limit?: number | null
+  segment?: string | null
+  tier?: string | null
   outstanding_balance: number
   credit_remaining?: number | null
   total_purchases: number
@@ -20,6 +27,8 @@ export interface CustomerInput {
   phone?: string
   address?: string
   credit_limit?: number
+  segment?: string
+  tier?: string
 }
 
 export interface CustomerStatement {

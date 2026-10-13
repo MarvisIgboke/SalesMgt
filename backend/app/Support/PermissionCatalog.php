@@ -74,6 +74,18 @@ final class PermissionCatalog
         ],
         'Subscription' => [
             'subscription.view',
+            'subscription.manage',
+        ],
+        'Billing' => [
+            'invoices.view',
+            'invoices.manage',
+        ],
+        'Settings' => [
+            'settings.receipt',
+        ],
+        'Hardware' => [
+            'printers.view',
+            'printers.manage',
         ],
         'Reports' => ['reports.view'],
         'Audit' => ['audit.view'],
@@ -131,7 +143,9 @@ final class PermissionCatalog
             'shifts.view', 'shifts.operate', 'shifts.reconcile',
             'departments.view', 'departments.manage',
             'wallet.view', 'wallet.transactions', 'wallet.manage',
-            'subscription.view',
+            'subscription.view', 'subscription.manage',
+            'settings.receipt',
+            'printers.view', 'printers.manage',
             'reports.view',
             'audit.view',
             'search.view',
@@ -153,6 +167,8 @@ final class PermissionCatalog
             'staff.view', 'staff.create', 'staff.edit',
             'shifts.view', 'shifts.operate', 'shifts.reconcile',
             'departments.view', 'departments.manage',
+            'settings.receipt',
+            'printers.view', 'printers.manage',
             'reports.view',
             'search.view',
             'notifications.view',

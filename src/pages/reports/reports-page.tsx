@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
-import { cn, formatCurrency, formatDate } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, saveBlob } from '@/lib/utils'
 
 interface AppliedReport {
   report_type: ReportType | ''
@@ -139,8 +139,11 @@ export function ReportsPage() {
 
   const exportReport = useMutation({
     mutationFn: (format: ExportFormat) => reportsApi.export(format, toParams(applied)),
-    onSuccess: (res) => {
-      toast.success(`Export ready: ${res.data.filename || 'file'}`)
+    onSuccess: async (res) => {
+      const { filename, title } = res.data
+      const blob = await reportsApi.download(filename)
+      saveBlob(blob, filename)
+      toast.success(`Export ready: ${filename}`, { description: title })
     },
     onError: (err) => {
       toast.error('Export failed', {

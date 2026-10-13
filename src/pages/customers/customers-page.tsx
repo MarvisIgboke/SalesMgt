@@ -21,6 +21,8 @@ import {
 } from 'lucide-react'
 import {
   customersApi,
+  CUSTOMER_SEGMENTS,
+  CUSTOMER_TIERS,
   type CustomerCard,
   type CustomerInput,
   type CustomerSummary,
@@ -835,9 +837,19 @@ type CustomerFormState = {
   phone: string
   address: string
   credit_limit: string
+  segment: string
+  tier: string
 }
 
-const EMPTY_FORM: CustomerFormState = { name: '', email: '', phone: '', address: '', credit_limit: '' }
+const EMPTY_FORM: CustomerFormState = {
+  name: '',
+  email: '',
+  phone: '',
+  address: '',
+  credit_limit: '',
+  segment: CUSTOMER_SEGMENTS[2],
+  tier: CUSTOMER_TIERS[4],
+}
 
 function toInput(form: CustomerFormState): CustomerInput {
   return {
@@ -846,6 +858,8 @@ function toInput(form: CustomerFormState): CustomerInput {
     phone: form.phone.trim() || undefined,
     address: form.address.trim() || undefined,
     credit_limit: form.credit_limit ? Number(form.credit_limit) : undefined,
+    segment: form.segment,
+    tier: form.tier,
   }
 }
 
@@ -866,6 +880,8 @@ function CustomerEditor({
           phone: customer.phone ?? '',
           address: customer.address ?? '',
           credit_limit: customer.credit_limit != null ? String(customer.credit_limit) : '',
+          segment: customer.segment || CUSTOMER_SEGMENTS[2],
+          tier: customer.tier || CUSTOMER_TIERS[4],
         }
       : EMPTY_FORM,
   )
@@ -946,6 +962,38 @@ function CustomerEditor({
               onChange={(e) => set({ credit_limit: e.target.value })}
               placeholder="0"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="customer-segment">Segment</Label>
+              <Select value={form.segment} onValueChange={(value) => set({ segment: value })}>
+                <SelectTrigger id="customer-segment">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CUSTOMER_SEGMENTS.map((segment) => (
+                    <SelectItem key={segment} value={segment}>
+                      {segment}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="customer-tier">Tier</Label>
+              <Select value={form.tier} onValueChange={(value) => set({ tier: value })}>
+                <SelectTrigger id="customer-tier">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CUSTOMER_TIERS.map((tier) => (
+                    <SelectItem key={tier} value={tier}>
+                      {tier}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 

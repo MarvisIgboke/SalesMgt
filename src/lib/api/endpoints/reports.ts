@@ -50,9 +50,11 @@ export const reportsApi = {
   export: (format: ExportFormat, params: ReportParams) =>
     http.get<ApiEnvelope<{ url: string; filename: string; format: ExportFormat; title: string }>>(
       `/reports/export/${format}`,
-      {
-        params,
-        responseType: 'text',
-      },
+      { params },
     ),
+
+  download: (filename: string) =>
+    http.get<Blob>(`/reports/download/${encodeURIComponent(filename)}`, {
+      responseType: 'blob',
+    }),
 }

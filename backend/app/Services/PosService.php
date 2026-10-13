@@ -18,6 +18,7 @@ use App\Models\Shift;
 use App\Models\StockBatch;
 use App\Models\User;
 use App\Support\ReferenceGenerator;
+use App\Support\ReceiptSettings;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -711,7 +712,7 @@ class PosService
 
     public function receipt(Sale $sale): array
     {
-        $sale->loadMissing(['items', 'customer', 'branch', 'user', 'payments']);
+        $sale->loadMissing(['items', 'customer', 'branch.business', 'user', 'payments']);
 
         $items = $sale->items->map(fn ($item) => [
             'id' => $item->id,
@@ -741,6 +742,15 @@ class PosService
             $paymentMethods[] = ['method' => $sale->payment_status === 'credit' ? 'credit' : 'cash', 'amount' => (float) $sale->total];
         }
 
+        $business = $sale->branch?->business;
+
+        $config = ReceiptSettings::resolve($sale->branch_id);
+
+        if ($business !== null) {
+            $config = ReceiptSettings::effective($config, $business, $sale->branch);
+            $config['currency'] = $business->currency;
+        }
+
         return [
             'business_name' => $sale->branch?->business?->name ?? 'Business',
             'branch_name' => $sale->branch?->name ?? 'Branch',
@@ -758,6 +768,7 @@ class PosService
             'payment_status' => $sale->payment_status,
             'payment_methods' => $paymentMethods,
             'created_at' => $sale->created_at?->toIso8601String(),
+            'config' => $config,
             'qr_verification' => [
                 'payload' => implode('|', [$sale->reference, number_format((float) $sale->total, 2, '.', ''), substr(sha1($sale->reference.'|'.$sale->id), 0, 12)]),
             ],

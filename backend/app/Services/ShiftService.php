@@ -10,6 +10,7 @@ use App\Models\Sale;
 use App\Models\Shift;
 use App\Models\ShiftCashMovement;
 use App\Models\User;
+use App\Support\ReferenceGenerator;
 use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -54,7 +55,10 @@ class ShiftService
             ->first();
     }
 
-    public function open(int $userId, int $branchId, float $openingCash = 0): Shift
+    /**
+     * @param  array<int, int>  $assignedUserIds
+     */
+    public function open(int $userId, int $branchId, float $openingCash = 0, array $assignedUserIds = []): Shift
     {
         $existing = Shift::query()
             ->where('user_id', $userId)
@@ -69,8 +73,10 @@ class ShiftService
         return Shift::create([
             'business_id' => TenantContext::businessId(),
             'branch_id' => $branchId,
+            'reference' => ReferenceGenerator::make('SHF'),
             'user_id' => $userId,
             'status' => 'open',
+            'assigned_user_ids' => array_values(array_map('intval', $assignedUserIds)),
             'opened_at' => now(),
             'opening_cash' => round($openingCash, 2),
             'expected_cash' => round($openingCash, 2),

@@ -34,14 +34,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -61,7 +53,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { formatCurrency, formatDateTime } from '@/lib/utils'
+import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
 
@@ -97,6 +89,8 @@ export function ShiftsPage() {
 function ManagerView() {
   const queryClient = useQueryClient()
   const branchId = useAppStore((s) => s.context?.branch?.id)
+  const roles = useAuthStore((s) => s.session?.user.roles ?? [])
+  const isStoreManager = roles.includes('Store Manager')
   const navigate = useNavigate()
 
   const [openDialog, setOpenDialog] = useState(false)
@@ -132,7 +126,7 @@ function ManagerView() {
     queryFn: () =>
       shiftApi.history({
         page: historyPage,
-        per_page: 12,
+        per_page: 10,
         status: historyStatus === 'all' ? undefined : (historyStatus as Shift['status']),
       }),
     placeholderData: (prev) => prev,
@@ -140,10 +134,13 @@ function ManagerView() {
 
   const reps = useMemo(
     () =>
-      (staff.data?.data ?? []).filter((member) =>
-        member.roles?.includes('Sales Representative'),
+      (staff.data?.data ?? []).filter(
+        (member) =>
+          member.roles?.includes('Sales Representative') &&
+          branchId != null &&
+          member.branch_ids?.includes(branchId),
       ),
-    [staff.data],
+    [staff.data, branchId],
   )
 
   const openShift = useMutation({
@@ -213,13 +210,19 @@ function ManagerView() {
         {!current.isLoading && !current.isError && !currentShift && (
           <EmptyState
             title="No active shift"
-            description="Open the store shift and assign the sales reps that can operate on it."
+            description={
+              isStoreManager
+                ? 'Open the store shift and assign the sales reps registered to this branch.'
+                : 'Only a Store Manager can open a shift for this store.'
+            }
             icon={<Store className="h-6 w-6" />}
             action={
-              <Button variant="success" size="sm" onClick={() => setOpenDialog(true)}>
-                <Play className="h-4 w-4" />
-                Open shift
-              </Button>
+              isStoreManager ? (
+                <Button variant="success" size="sm" onClick={() => setOpenDialog(true)}>
+                  <Play className="h-4 w-4" />
+                  Open shift
+                </Button>
+              ) : undefined
             }
           />
         )}
@@ -312,7 +315,7 @@ function ManagerView() {
           </div>
         </div>
 
-        {history.isLoading && <LoadingState variant="table" rows={8} />}
+        {history.isLoading && <LoadingState rows={6} />}
         {history.isError && <ErrorState error={history.error} onRetry={() => history.refetch()} />}
 
         {!history.isLoading && !history.isError && (history.data?.data?.length ?? 0) === 0 && (
@@ -321,54 +324,15 @@ function ManagerView() {
 
         {!history.isLoading && !history.isError && (history.data?.data?.length ?? 0) > 0 && (
           <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>Opened by</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Opened</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                  <TableHead className="text-right">Expected</TableHead>
-                  <TableHead className="w-8" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.data!.data.map((shift) => (
-                  <TableRow
-                    key={shift.id}
-                    className="cursor-pointer"
-                    onClick={() => navigate(`/shifts/${shift.id}`)}
-                  >
-                    <TableCell className="text-sm font-medium text-foreground">
-                      {shift.reference ?? `#${shift.id}`}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {shift.branch_name}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {shift.user_name}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={shift.status} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {formatDateTime(shift.opened_at)}
-                    </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                      {shift.sales_count ?? 0}
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-medium tabular-nums text-foreground">
-                      {formatCurrency(shift.expected_cash)}
-                    </TableCell>
-                    <TableCell className="pr-2 text-right text-muted-foreground">
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="flex flex-col gap-3">
+              {history.data!.data.map((shift) => (
+                <ShiftHistoryCard
+                  key={shift.id}
+                  shift={shift}
+                  onOpen={() => navigate(`/shifts/${shift.id}`)}
+                />
+              ))}
+            </div>
 
             <Pagination
               page={history.data?.meta?.current_page ?? historyPage}
@@ -436,7 +400,7 @@ function ManagerView() {
           <DialogHeader>
             <DialogTitle>Open store shift</DialogTitle>
             <DialogDescription>
-              Set the opening float and assign the sales reps that may operate on this shift.
+              Set the opening float and assign the sales reps registered to this branch.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -457,7 +421,9 @@ function ManagerView() {
               <Label>Assign sales reps</Label>
               {staff.isLoading && <LoadingState rows={2} />}
               {!staff.isLoading && reps.length === 0 && (
-                <p className="text-xs text-muted-foreground">No sales representatives found.</p>
+                <p className="text-xs text-muted-foreground">
+                  No sales reps are registered to this branch.
+                </p>
               )}
               <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border/70 p-2">
                 {reps.map((rep) => (
@@ -864,6 +830,83 @@ function ConfigRow({
         <p className="text-xs text-muted-foreground">{hint}</p>
       </div>
       <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
+    </div>
+  )
+}
+
+function ShiftHistoryCard({ shift, onOpen }: { shift: Shift; onOpen: () => void }) {
+  const stripe =
+    shift.status !== 'closed'
+      ? 'bg-info'
+      : (shift.variance ?? 0) > 0.005
+        ? 'bg-warning'
+        : (shift.variance ?? 0) < -0.005
+          ? 'bg-destructive'
+          : 'bg-success'
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen()
+        }
+      }}
+      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-surface-elevated transition-colors hover:border-primary/40 hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+    >
+      <span className={cn('absolute inset-y-0 left-0 w-1', stripe)} aria-hidden />
+      <div className="flex items-center gap-3 p-3.5 pl-4">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+          <Store className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-semibold text-foreground">
+              {shift.reference ?? `#${shift.id}`}
+            </span>
+            <StatusBadge status={shift.status} />
+          </div>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="truncate">{shift.branch_name}</span>
+            <span aria-hidden>•</span>
+            <span className="truncate">{shift.user_name}</span>
+            <span aria-hidden>•</span>
+            <span className="whitespace-nowrap">{formatDateTime(shift.opened_at)}</span>
+          </p>
+        </div>
+        <div className="hidden shrink-0 items-center gap-4 sm:flex">
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sales</p>
+            <p className="text-sm font-medium tabular-nums text-foreground">
+              {shift.sales_count ?? 0}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Expected</p>
+            <p className="text-sm font-medium tabular-nums text-foreground">
+              {formatCurrency(shift.expected_cash)}
+            </p>
+          </div>
+        </div>
+        <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-border/70 px-3.5 py-2 sm:hidden">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Sales{' '}
+          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+            {shift.sales_count ?? 0}
+          </span>
+        </span>
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Expected{' '}
+          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+            {formatCurrency(shift.expected_cash)}
+          </span>
+        </span>
+      </div>
     </div>
   )
 }

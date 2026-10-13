@@ -12,7 +12,7 @@ class Customer extends Model
     use BelongsToBusiness;
 
     protected $fillable = [
-        'business_id', 'name', 'email', 'phone', 'address', 'credit_limit', 'photo_url', 'created_by',
+        'business_id', 'name', 'email', 'phone', 'address', 'credit_limit', 'segment', 'tier', 'photo_url', 'created_by',
     ];
 
     protected function casts(): array

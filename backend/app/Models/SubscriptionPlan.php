@@ -13,8 +13,7 @@ class SubscriptionPlan extends Model
         'description',
         'staff_limit',
         'branch_limit',
-        'product_limit',
-        'transaction_limit',
+        'duration_months',
         'monthly_price',
         'quarterly_price',
         'annual_price',
@@ -29,11 +28,10 @@ class SubscriptionPlan extends Model
         return [
             'staff_limit' => 'integer',
             'branch_limit' => 'integer',
-            'product_limit' => 'integer',
-            'transaction_limit' => 'integer',
-            'monthly_price' => 'float',
-            'quarterly_price' => 'float',
-            'annual_price' => 'float',
+            'duration_months' => 'integer',
+            'monthly_price' => 'decimal:2',
+            'quarterly_price' => 'decimal:2',
+            'annual_price' => 'decimal:2',
             'grace_days' => 'integer',
             'features' => 'array',
             'is_active' => 'boolean',
@@ -50,8 +48,7 @@ class SubscriptionPlan extends Model
         return [
             'staff_limit' => $this->staff_limit,
             'branch_limit' => $this->branch_limit,
-            'product_limit' => $this->product_limit,
-            'transaction_limit' => $this->transaction_limit,
+            'duration_months' => $this->duration_months,
         ];
     }
 
@@ -64,8 +61,7 @@ class SubscriptionPlan extends Model
             'description' => $this->description,
             'staff_limit' => $this->staff_limit,
             'branch_limit' => $this->branch_limit,
-            'product_limit' => $this->product_limit,
-            'transaction_limit' => $this->transaction_limit,
+            'duration_months' => $this->duration_months,
             'monthly_price' => $this->monthly_price,
             'quarterly_price' => $this->quarterly_price,
             'annual_price' => $this->annual_price,

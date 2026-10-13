@@ -1193,7 +1193,7 @@ function AccessDialog({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
-  const [override, setOverride] = useState<string[] | null>(null)
+  const [selected, setSelected] = useState<string[] | null>(null)
 
   const detail = useQuery({
     queryKey: ['staff', member.id, 'permissions'],
@@ -1202,11 +1202,11 @@ function AccessDialog({
 
   const catalog = detail.data?.data.catalog ?? []
   const roles = detail.data?.data.roles ?? []
-  const direct = override ?? detail.data?.data.permissions ?? []
+  const direct = detail.data?.data.permissions ?? []
   const effective = detail.data?.data.effective_permissions ?? []
+  const value = selected ?? effective
 
-  const inherited = effective.filter((key) => !direct.includes(key))
-  const locked = new Set(inherited)
+  const inherited = new Set(effective.filter((key) => !direct.includes(key)))
   const disabled = isSelf
 
   const resourceRows = buildResourceRows(catalog)
@@ -1215,11 +1215,11 @@ function AccessDialog({
     return !isCrud(action) && permission.key !== 'sales.credit'
   })
 
-  const creditOn = effective.includes('sales.credit')
-  const creditLocked = locked.has('sales.credit') || disabled
+  const creditOn = value.includes('sales.credit')
+  const creditLocked = disabled
 
   const save = useMutation({
-    mutationFn: () => staffApi.syncPermissions(member.id, direct),
+    mutationFn: () => staffApi.syncPermissions(member.id, value),
     onSuccess: () => {
       toast.success('Access updated')
       onClose()
@@ -1233,21 +1233,13 @@ function AccessDialog({
   })
 
   const toggle = (key: string) => {
-    if (disabled || locked.has(key)) return
-    setOverride(
-      direct.includes(key)
-        ? direct.filter((item) => item !== key)
-        : Array.from(new Set([...direct, key])),
-    )
+    if (disabled) return
+    setSelected(value.includes(key) ? value.filter((item) => item !== key) : [...value, key])
   }
 
-  const toggleCredit = (value: boolean) => {
-    if (creditLocked) return
-    setOverride(
-      value
-        ? Array.from(new Set([...direct, 'sales.credit']))
-        : direct.filter((item) => item !== 'sales.credit'),
-    )
+  const toggleCredit = (on: boolean) => {
+    if (disabled) return
+    setSelected(on ? [...value, 'sales.credit'] : value.filter((item) => item !== 'sales.credit'))
   }
 
   const advancedGroups = advanced.reduce<Map<string, PermissionItem[]>>((acc, permission) => {
@@ -1263,8 +1255,8 @@ function AccessDialog({
         <DialogHeader>
           <DialogTitle>Access &amp; Security · {member.name}</DialogTitle>
           <DialogDescription>
-            Grant page-level view/add/edit/delete rights and credit selling. Direct grants layer on top of
-            {roles.length > 0 ? ` the ${roles.join(', ')} role` : ' assigned roles'}.
+            Toggle exactly what this member can access. Rights inherited from
+            {roles.length > 0 ? ` the ${roles.join(', ')} role` : ' assigned roles'} are pre-selected and can be revoked here.
           </DialogDescription>
         </DialogHeader>
 
@@ -1290,7 +1282,7 @@ function AccessDialog({
                     <p className="text-xs text-muted-foreground">
                       Allow this member to complete credit sales and settle later.
                     </p>
-                    {locked.has('sales.credit') && (
+                    {inherited.has('sales.credit') && (
                       <span className="mt-0.5 inline-block rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] uppercase text-muted-foreground">
                         Granted via role
                       </span>
@@ -1324,8 +1316,8 @@ function AccessDialog({
                           <span key={action} className="flex justify-center">
                             {permission ? (
                               <AccessToggle
-                                checked={effective.includes(permission.key)}
-                                locked={locked.has(permission.key)}
+                                checked={value.includes(permission.key)}
+                                locked={false}
                                 disabled={disabled}
                                 label={`${CRUD_LABELS[action]} ${row.label}`}
                                 onToggle={() => toggle(permission.key)}
@@ -1355,8 +1347,8 @@ function AccessDialog({
                         {items.map((permission) => (
                           <AccessRow
                             key={permission.key}
-                            checked={effective.includes(permission.key)}
-                            locked={locked.has(permission.key)}
+                            checked={value.includes(permission.key)}
+                            locked={false}
                             disabled={disabled}
                             label={permission.label}
                             onToggle={() => toggle(permission.key)}

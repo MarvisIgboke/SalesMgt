@@ -69,7 +69,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatCurrency, formatNumber, cn, debounce } from '@/lib/utils'
+import { formatCurrency, formatDate, formatNumber, cn, debounce } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
 
@@ -96,6 +96,7 @@ interface ProductFormState {
   selling_price: string
   tax_rate: string
   requires_expiry: boolean
+  expiry_date: string
   is_active: boolean
   barcodes: string
 }
@@ -111,6 +112,7 @@ const EMPTY_FORM: ProductFormState = {
   selling_price: '',
   tax_rate: '',
   requires_expiry: false,
+  expiry_date: '',
   is_active: true,
   barcodes: '',
 }
@@ -127,6 +129,7 @@ function toForm(product: Product): ProductFormState {
     selling_price: product.selling_price ? String(product.selling_price) : '',
     tax_rate: product.tax_rate != null ? String(product.tax_rate) : '',
     requires_expiry: product.requires_expiry,
+    expiry_date: product.expiry_date ? product.expiry_date.slice(0, 10) : '',
     is_active: product.is_active,
     barcodes: '',
   }
@@ -955,6 +958,7 @@ function ProductCard({
         <span className="text-muted-foreground">
           Tax: {product.tax_rate ? `${product.tax_rate}%` : '—'}
           {product.has_variants ? ` · ${product.variants?.length ?? 0} variants` : ''}
+          {product.expiry_date ? ` · Exp ${formatDate(product.expiry_date)}` : ''}
         </span>
         {margin !== null && (
           <span className={cn('font-semibold', margin >= 0 ? 'text-success' : 'text-destructive')}>
@@ -1126,6 +1130,7 @@ function ProductEditorDialog({
       selling_price: form.selling_price ? Number(form.selling_price) : undefined,
       tax_rate: form.tax_rate ? Number(form.tax_rate) : null,
       requires_expiry: form.requires_expiry,
+      expiry_date: form.expiry_date || null,
       is_active: form.is_active,
     }
     if (!product) input.barcodes = parseBarcodes(form.barcodes)
@@ -1297,6 +1302,19 @@ function ProductEditorDialog({
               </div>
               <Switch checked={form.is_active} onCheckedChange={(next) => set({ is_active: next })} />
             </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="product-expiry">Expiry date</Label>
+            <Input
+              id="product-expiry"
+              type="date"
+              value={form.expiry_date}
+              onChange={(e) => set({ expiry_date: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Drives the Expiry Manager. Leave blank for non-perishable items.
+            </p>
           </div>
 
           {!product && (

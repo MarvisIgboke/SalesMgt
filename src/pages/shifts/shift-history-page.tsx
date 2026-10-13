@@ -42,7 +42,7 @@ import { cn, formatCurrency, formatDateTime, formatNumber } from '@/lib/utils'
 type Bucket = 'all' | 'balanced' | 'overage' | 'variance'
 type Scope = 'all' | 'week' | 'month' | 'custom'
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 10
 
 function shiftBucket(shift: Shift): Bucket {
   if (shift.status !== 'closed' || shift.variance === null || shift.variance === undefined) {
