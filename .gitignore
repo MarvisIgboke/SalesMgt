@@ -30,3 +30,7 @@ dist-ssr
 
 # PWA generated
 dev-dist
+
+# Production release bundles
+release/
+release.zip

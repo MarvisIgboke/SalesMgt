@@ -1,0 +1,13 @@
+# SalesMgt - cPanel cron jobs
+# -----------------------------------------------------------------------------
+# Add these in cPanel > Cron Jobs. Replace `USERNAME` with your cPanel account
+# name and confirm the PHP path/version (see the "Current Cron" note in cPanel,
+# usually /usr/local/bin/php or a versioned path such as /usr/local/bin/php82).
+#
+# 1) Laravel task scheduler - REQUIRED (runs every minute).
+* * * * * cd /home/USERNAME/salesmgt && /usr/local/bin/php artisan schedule:run >> /dev/null 2>&1
+
+# 2) Queue worker - OPTIONAL. Only needed if you switch QUEUE_CONNECTION away
+#    from "sync" (the recommended value on shared hosting is "sync", which runs
+#    jobs inline and needs no worker).
+# */5 * * * * cd /home/USERNAME/salesmgt && /usr/local/bin/php artisan queue:work --stop-when-empty --max-time=280 >> /dev/null 2>&1

@@ -29,6 +29,12 @@ return Application::configure(basePath: dirname(__DIR__))
             SetRequestId::class,
         ]);
 
+        if ($trustedProxies = env('TRUSTED_PROXIES')) {
+            $middleware->trustProxies(
+                at: $trustedProxies === '*' ? '*' : array_map('trim', explode(',', $trustedProxies)),
+            );
+        }
+
         $middleware->statefulApi();
 
         $middleware->alias([
