@@ -1070,6 +1070,8 @@ function MemberDialog({
             <Label htmlFor="staff-name">Name</Label>
             <Input
               id="staff-name"
+              name="name"
+              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Amina Bello"
@@ -1080,7 +1082,9 @@ function MemberDialog({
             <Label htmlFor="staff-email">Email</Label>
             <Input
               id="staff-email"
+              name="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@business.com"
@@ -1090,6 +1094,10 @@ function MemberDialog({
             <Label htmlFor="staff-phone">Phone</Label>
             <Input
               id="staff-phone"
+              name="phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+234 800 000 0000"
@@ -1100,7 +1108,9 @@ function MemberDialog({
               <Label htmlFor="staff-password">Initial password</Label>
               <Input
                 id="staff-password"
+                name="new-password"
                 type="password"
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Set a temporary password"
@@ -1110,16 +1120,18 @@ function MemberDialog({
           <div className="grid gap-2">
             <Label>Roles</Label>
             <div className="grid gap-2 sm:grid-cols-2">
-              {(roles.data?.data ?? []).map((role: Role) => (
-                <label key={role.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedRoles.includes(role.name)}
-                    onChange={() => toggleRole(role.name)}
-                  />
-                  {role.name}
-                </label>
-              ))}
+              {(roles.data?.data ?? [])
+                .filter((role: Role) => role.name !== 'Super Admin')
+                .map((role: Role) => (
+                  <label key={role.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedRoles.includes(role.name)}
+                      onChange={() => toggleRole(role.name)}
+                    />
+                    {role.name}
+                  </label>
+                ))}
             </div>
           </div>
           <div className="grid gap-2">

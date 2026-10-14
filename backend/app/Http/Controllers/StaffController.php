@@ -592,6 +592,12 @@ class StaffController extends Controller
     private function allowedRoles(array $names): array
     {
         $businessId = TenantContext::businessId();
+        $actor = auth()->user();
+
+        $names = array_values(array_filter(
+            $names,
+            fn (string $name) => $name !== 'Super Admin' || ($actor !== null && $actor->hasRole('Super Admin')),
+        ));
 
         return Role::query()
             ->whereIn('name', $names)
