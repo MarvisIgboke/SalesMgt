@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
-  ArrowLeftRight,
   Barcode,
   Boxes,
   CheckCircle2,
@@ -72,6 +71,7 @@ import {
 import { formatCurrency, formatDate, formatNumber, cn, debounce } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
+import { usePermissions } from '@/lib/use-permissions'
 
 type CatalogView = 'catalog' | 'categories' | 'brands'
 
@@ -206,6 +206,10 @@ export function ProductsPage() {
   const navigate = useNavigate()
   const branchId = useAppStore((s) => s.context?.branch?.id)
   const branchName = useAppStore((s) => s.context?.branch?.name)
+  const { can } = usePermissions()
+  const canCreate = can('products.create')
+  const canEdit = can('products.edit')
+  const canDelete = can('products.delete')
 
   const [view, setView] = useState<CatalogView>('catalog')
   const [search, setSearch] = useState('')
@@ -331,6 +335,7 @@ export function ProductsPage() {
     <div className="animate-fade-in space-y-4">
       <CatalogHeader
         branchName={branchName}
+        canAdd={canCreate}
         onAdd={openCreate}
         onExport={() => {
           if (rows.length === 0) {
@@ -421,9 +426,11 @@ export function ProductsPage() {
               description="Try adjusting your search or filters, or add a product."
               icon={<PackagePlus className="h-6 w-6" />}
               action={
-                <Button variant="outline" size="sm" onClick={openCreate}>
-                  New product
-                </Button>
+                canCreate ? (
+                  <Button variant="outline" size="sm" onClick={openCreate}>
+                    New product
+                  </Button>
+                ) : undefined
               }
             />
           )}
@@ -436,6 +443,8 @@ export function ProductsPage() {
                     key={product.id}
                     product={product}
                     selected={selected.has(product.id)}
+                    canEdit={canEdit}
+                    canDelete={canDelete}
                     onToggle={() => toggle(product.id)}
                     onEdit={() => openEdit(product)}
                     onStock={() => navigate('/inventory')}
@@ -497,22 +506,26 @@ export function ProductsPage() {
               <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
                 Clear
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={bulkStatus.isPending}
-                onClick={() => bulkStatus.mutate({ ids: [...selected], is_active: false })}
-              >
-                <PackageX /> Deactivate
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={bulkStatus.isPending}
-                onClick={() => bulkStatus.mutate({ ids: [...selected], is_active: true })}
-              >
-                <CheckCircle2 /> Activate
-              </Button>
+              {canEdit && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={bulkStatus.isPending}
+                    onClick={() => bulkStatus.mutate({ ids: [...selected], is_active: false })}
+                  >
+                    <PackageX /> Deactivate
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={bulkStatus.isPending}
+                    onClick={() => bulkStatus.mutate({ ids: [...selected], is_active: true })}
+                  >
+                    <CheckCircle2 /> Activate
+                  </Button>
+                </>
+              )}
               <Button variant="success" size="sm" onClick={() => downloadCsv(selectedRows)}>
                 <FileDown /> Export
               </Button>
@@ -579,10 +592,12 @@ export function ProductsPage() {
 
 function CatalogHeader({
   branchName,
+  canAdd,
   onAdd,
   onExport,
 }: {
   branchName?: string | null
+  canAdd: boolean
   onAdd: () => void
   onExport: () => void
 }) {
@@ -608,9 +623,11 @@ function CatalogHeader({
           <Button variant="outline" size="sm" onClick={onExport}>
             <FileDown /> CSV
           </Button>
-          <Button size="sm" onClick={onAdd}>
-            <Plus /> Add Product
-          </Button>
+          {canAdd && (
+            <Button size="sm" onClick={onAdd}>
+              <Plus /> Add Product
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -825,6 +842,8 @@ function CategoryChips({
 function ProductCard({
   product,
   selected,
+  canEdit,
+  canDelete,
   onToggle,
   onEdit,
   onStock,
@@ -833,6 +852,8 @@ function ProductCard({
 }: {
   product: Product
   selected: boolean
+  canEdit: boolean
+  canDelete: boolean
   onToggle: () => void
   onEdit: () => void
   onStock: () => void
@@ -968,30 +989,35 @@ function ProductCard({
       </div>
 
       <div className="grid grid-cols-4 gap-1.5 border-t border-border/60 pt-3">
-        <Button
-          variant="secondary"
-          size="sm"
-          className="h-9 gap-1 px-1 text-[11px]"
-          onClick={onEdit}
-        >
-          <Pencil /> Edit
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="h-9 gap-1 px-1 text-[11px]"
-          onClick={onStock}
-        >
-          <ArrowLeftRight /> Stock
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="h-9 gap-1 px-1 text-[11px]"
-          onClick={onBarcodes}
-        >
-          <Barcode /> Codes
-        </Button>
+        {canEdit ? (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-9 gap-1 px-1 text-[11px]"
+              onClick={onEdit}
+            >
+              <Pencil /> Edit
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-9 gap-1 px-1 text-[11px]"
+              onClick={onBarcodes}
+            >
+              <Barcode /> Codes
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="col-span-3 h-9 gap-1 px-1 text-[11px]"
+            onClick={onStock}
+          >
+            <History /> Stock movements
+          </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" size="sm" className="h-9 px-1 text-[11px]">
@@ -1014,14 +1040,18 @@ function ProductCard({
                 Copy barcode
               </DropdownMenuItem>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onDelete}
-              className="!text-destructive focus:!bg-destructive/10 focus:!text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
+            {canDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={onDelete}
+                  className="!text-destructive focus:!bg-destructive/10 focus:!text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

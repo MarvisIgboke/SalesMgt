@@ -49,6 +49,7 @@ import {
 import { formatCurrency, formatDateTime, formatRelative, cn } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
+import { usePermissions } from '@/lib/use-permissions'
 import { useAppStore } from '@/stores/app'
 
 type FinanceSection = 'approvals' | 'receivables' | 'reconciliation'
@@ -176,6 +177,9 @@ function DeskHeader({ branchName }: { branchName?: string | null }) {
 
 function ApprovalsDesk() {
   const queryClient = useQueryClient()
+  const { can } = usePermissions()
+  const canApprove = can('finance.payment_approve')
+  const canReject = can('finance.payment_reject')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
@@ -381,6 +385,8 @@ function ApprovalsDesk() {
                 item={item}
                 selected={selected.has(item.id)}
                 busy={decide.isPending}
+                canApprove={canApprove}
+                canReject={canReject}
                 onToggle={() => toggle(item.id)}
                 onOpen={() => setDetail(item)}
                 onApprove={() => decideOne(item.id, 'approved')}
@@ -402,12 +408,12 @@ function ApprovalsDesk() {
 
       {selectedRows.length > 0 && <div className="h-20" />}
 
-      {selectedRows.length > 0 && (
+      {selectedRows.length > 0 && (canApprove || canReject) && (
         <div className="fixed inset-x-0 bottom-16 z-30 px-3 lg:bottom-4">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/95 p-3 shadow-card backdrop-blur">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                <Fingerprint className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 font-mono text-xs font-bold text-primary">
+                {selectedRows.length}
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-foreground">
@@ -422,22 +428,26 @@ function ApprovalsDesk() {
               <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
                 Cancel
               </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={decide.isPending}
-                onClick={() => decideBatch('rejected')}
-              >
-                <X /> Decline
-              </Button>
-              <Button
-                variant="success"
-                size="sm"
-                disabled={decide.isPending}
-                onClick={() => decideBatch('approved')}
-              >
-                <ShieldCheck /> Authorize Selected
-              </Button>
+              {canReject && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={decide.isPending}
+                  onClick={() => decideBatch('rejected')}
+                >
+                  <X /> Decline
+                </Button>
+              )}
+              {canApprove && (
+                <Button
+                  variant="success"
+                  size="sm"
+                  disabled={decide.isPending}
+                  onClick={() => decideBatch('approved')}
+                >
+                  <ShieldCheck /> Authorize Selected
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -446,6 +456,8 @@ function ApprovalsDesk() {
       <ApprovalDetailDialog
         item={detail}
         busy={decide.isPending}
+        canApprove={canApprove}
+        canReject={canReject}
         onClose={() => setDetail(null)}
         onApprove={() => detail && decideOne(detail.id, 'approved')}
         onReject={() => detail && decideOne(detail.id, 'rejected')}
@@ -492,6 +504,8 @@ function ApprovalCard({
   item,
   selected,
   busy,
+  canApprove,
+  canReject,
   onToggle,
   onOpen,
   onApprove,
@@ -500,6 +514,8 @@ function ApprovalCard({
   item: FinanceQueueItem
   selected: boolean
   busy: boolean
+  canApprove: boolean
+  canReject: boolean
   onToggle: () => void
   onOpen: () => void
   onApprove: () => void
@@ -507,11 +523,12 @@ function ApprovalCard({
 }) {
   const pending = item.status === 'pending'
   const overdue = pending && isOverdue(item.created_at)
+  const canDecide = canApprove || canReject
 
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border/60 bg-surface-sunken px-4 py-2">
-        {pending && (
+        {pending && canDecide && (
           <button
             type="button"
             onClick={onToggle}
@@ -592,12 +609,16 @@ function ApprovalCard({
               <FileText /> Details
             </Button>
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="destructive" size="sm" disabled={busy} onClick={onReject}>
-                <X /> Decline
-              </Button>
-              <Button variant="success" size="sm" disabled={busy} onClick={onApprove}>
-                <ShieldCheck /> Authorize
-              </Button>
+              {canReject && (
+                <Button variant="destructive" size="sm" disabled={busy} onClick={onReject}>
+                  <X /> Decline
+                </Button>
+              )}
+              {canApprove && (
+                <Button variant="success" size="sm" disabled={busy} onClick={onApprove}>
+                  <ShieldCheck /> Authorize
+                </Button>
+              )}
             </div>
           </div>
         ) : (
@@ -689,12 +710,16 @@ function GovernanceChain({ item }: { item: FinanceQueueItem }) {
 function ApprovalDetailDialog({
   item,
   busy,
+  canApprove,
+  canReject,
   onClose,
   onApprove,
   onReject,
 }: {
   item: FinanceQueueItem | null
   busy: boolean
+  canApprove: boolean
+  canReject: boolean
   onClose: () => void
   onApprove: () => void
   onReject: () => void
@@ -757,14 +782,18 @@ function ApprovalDetailDialog({
               )}
             </div>
 
-            {pending && (
+            {pending && (canApprove || canReject) && (
               <DialogFooter>
-                <Button variant="destructive" disabled={busy} onClick={onReject}>
-                  <X /> Decline
-                </Button>
-                <Button variant="success" disabled={busy} onClick={onApprove}>
-                  <ShieldCheck /> Authorize
-                </Button>
+                {canReject && (
+                  <Button variant="destructive" disabled={busy} onClick={onReject}>
+                    <X /> Decline
+                  </Button>
+                )}
+                {canApprove && (
+                  <Button variant="success" disabled={busy} onClick={onApprove}>
+                    <ShieldCheck /> Authorize
+                  </Button>
+                )}
               </DialogFooter>
             )}
           </>

@@ -123,9 +123,36 @@ final class PermissionCatalog
         return $out;
     }
 
+    /**
+     * Platform administrator: full control over platform billing/tenancy,
+     * but read-only visibility into a business's operations. Write/operate
+     * permissions across tenant modules are intentionally withheld.
+     *
+     * @return list<string>
+     */
     public static function superAdmin(): array
     {
-        return self::all();
+        return [
+            // Platform administration.
+            'subscription.view',
+            'invoices.view', 'invoices.manage',
+            // Read-only visibility into business operations.
+            'dashboard.view',
+            'sales.view',
+            'products.view',
+            'customers.view',
+            'inventory.view',
+            'finance.view',
+            'staff.view',
+            'departments.view',
+            'shifts.view',
+            'wallet.view',
+            'printers.view',
+            'reports.view',
+            'audit.view',
+            'search.view',
+            'notifications.view',
+        ];
     }
 
     public static function businessAdmin(): array

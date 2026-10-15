@@ -18,7 +18,7 @@ import {
   type InvoiceSummary,
   type SubscriptionInvoice,
 } from '@/lib/api/endpoints/billing'
-import { businessApi } from '@/lib/api/endpoints/business'
+import { businessApi, subscriptionApi } from '@/lib/api/endpoints/business'
 import { PageHeader } from '@/components/common/page-header'
 import { LoadingState } from '@/components/common/loading-state'
 import { ErrorState } from '@/components/common/error-state'
@@ -500,12 +500,22 @@ function GenerateDialog({
 }) {
   const [period, setPeriod] = useState('')
   const [businessId, setBusinessId] = useState('all')
+  const [planId, setPlanId] = useState('none')
+
+  const plans = useQuery({
+    queryKey: ['subscription-plans'],
+    queryFn: () => subscriptionApi.plans(),
+  })
+
+  const planOptions = plans.data?.data ?? []
+  const selectedPlan = planOptions.find((plan) => String(plan.id) === planId)
 
   const generate = useMutation({
     mutationFn: () =>
       billingApi.generate({
         period: period || undefined,
         business_id: businessId === 'all' ? undefined : Number(businessId),
+        plan_id: planId === 'none' ? undefined : Number(planId),
       }),
     onSuccess: (res) => {
       toast.success(res.message ?? 'Invoices generated', {
@@ -546,6 +556,30 @@ function GenerateDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>Plan</Label>
+            <Select value={planId} onValueChange={setPlanId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Use the business&apos;s own plan</SelectItem>
+                {planOptions.map((plan) => (
+                  <SelectItem key={plan.id} value={String(plan.id)}>
+                    {plan.name}
+                    {plan.monthly_price != null
+                      ? ` · ${formatCurrency(plan.monthly_price, plan.currency)}`
+                      : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {selectedPlan?.monthly_price != null
+                ? `Invoice amount will be ${formatCurrency(selectedPlan.monthly_price, selectedPlan.currency)}.`
+                : 'The invoice amount is taken from the selected plan.'}
+            </p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="gen-period">Period (optional)</Label>

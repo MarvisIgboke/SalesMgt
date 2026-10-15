@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Subscription;
 use App\Models\SubscriptionInvoice;
+use App\Models\SubscriptionPlan;
 use Illuminate\Support\Carbon;
 
 class SubscriptionBillingService
@@ -14,7 +15,7 @@ class SubscriptionBillingService
      * the invoice (existing or newly created) or null when the business has no
      * subscription to bill.
      */
-    public function ensureForBusiness(Business $business, mixed $period = null): ?SubscriptionInvoice
+    public function ensureForBusiness(Business $business, mixed $period = null, ?int $planId = null): ?SubscriptionInvoice
     {
         $periodStart = ($period !== null ? Carbon::parse($period) : now())->copy()->startOfMonth();
 
@@ -28,6 +29,13 @@ class SubscriptionBillingService
             return null;
         }
 
+        // An explicitly selected plan overrides the business's own plan amount.
+        $plan = $subscription->plan;
+
+        if ($planId !== null) {
+            $plan = SubscriptionPlan::query()->find($planId) ?? $plan;
+        }
+
         $number = $this->number($business->id, $periodStart);
 
         $existing = SubscriptionInvoice::withoutGlobalScope('tenant-business')
@@ -35,6 +43,20 @@ class SubscriptionBillingService
             ->first();
 
         if ($existing !== null) {
+            if ($planId !== null) {
+                $existing->forceFill([
+                    'amount' => (float) ($plan?->monthly_price ?? 0),
+                    'currency' => $business->currency ?: ($plan?->currency ?? 'NGN'),
+                    'meta' => [
+                        'plan' => $plan?->name,
+                        'plan_id' => $plan?->id,
+                        'duration_months' => $subscription->durationMonths(),
+                    ],
+                ])->save();
+
+                return $existing->fresh();
+            }
+
             return $existing;
         }
 
@@ -47,10 +69,11 @@ class SubscriptionBillingService
             'period_end' => $periodStart->copy()->endOfMonth()->toDateString(),
             'issued_at' => now()->toDateString(),
             'due_at' => now()->toDateString(),
-            'amount' => (float) ($subscription->plan?->monthly_price ?? 0),
-            'currency' => $business->currency ?: ($subscription->plan?->currency ?? 'NGN'),
+            'amount' => (float) ($plan?->monthly_price ?? 0),
+            'currency' => $business->currency ?: ($plan?->currency ?? 'NGN'),
             'meta' => [
-                'plan' => $subscription->plan?->name,
+                'plan' => $plan?->name,
+                'plan_id' => $plan?->id,
                 'duration_months' => $subscription->durationMonths(),
             ],
         ]);
@@ -61,7 +84,7 @@ class SubscriptionBillingService
      *
      * @return array<int, SubscriptionInvoice>
      */
-    public function run(?string $period = null, ?int $businessId = null): array
+    public function run(?string $period = null, ?int $businessId = null, ?int $planId = null): array
     {
         $query = Business::query()->orderBy('id');
 
@@ -72,7 +95,7 @@ class SubscriptionBillingService
         $created = [];
 
         foreach ($query->get() as $business) {
-            $invoice = $this->ensureForBusiness($business, $period);
+            $invoice = $this->ensureForBusiness($business, $period, $planId);
 
             if ($invoice !== null && $invoice->wasRecentlyCreated) {
                 $created[] = $invoice;

@@ -123,7 +123,7 @@ export const billingApi = {
     search?: string
   }) => http.get<InvoicePage>('/invoices', { params }),
 
-  generate: (input?: { period?: string; business_id?: number }) =>
+  generate: (input?: { period?: string; business_id?: number; plan_id?: number }) =>
     http.post<ApiEnvelope<{ generated: number; invoices: SubscriptionInvoice[] }>>('/invoices/generate', input),
 
   invoice: (id: number) => http.get<ApiEnvelope<SubscriptionInvoice>>(`/invoices/${id}`),

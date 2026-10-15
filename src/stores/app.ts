@@ -97,7 +97,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const { data } = await businessApi.getContext()
       setRequestContext({
-        businessId: data.business.id,
+        businessId: data.business.id > 0 ? data.business.id : null,
         branchId: data.branch?.id ?? null,
       })
       set({

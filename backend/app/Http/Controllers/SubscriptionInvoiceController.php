@@ -72,9 +72,14 @@ class SubscriptionInvoiceController extends Controller
         $data = $request->validate([
             'period' => ['nullable', 'date_format:Y-m'],
             'business_id' => ['nullable', 'integer', 'exists:businesses,id'],
+            'plan_id' => ['nullable', 'integer', 'exists:subscription_plans,id'],
         ]);
 
-        $created = $this->billing->run($data['period'] ?? null, $data['business_id'] ?? null);
+        $created = $this->billing->run(
+            $data['period'] ?? null,
+            $data['business_id'] ?? null,
+            $data['plan_id'] ?? null,
+        );
 
         return ApiResponse::success(
             [

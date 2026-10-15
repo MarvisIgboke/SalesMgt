@@ -256,7 +256,7 @@ class ApiFlowTest extends TestCase
      */
     private function scene(string $sku): array
     {
-        $admin = User::query()->where('email', 'admin@demo.local')->firstOrFail();
+        $admin = User::query()->where('email', 'owner@demo.local')->firstOrFail();
         $branch = Branch::query()->where('code', 'HQ')->firstOrFail();
         $product = Product::query()->where('sku', $sku)->firstOrFail();
 

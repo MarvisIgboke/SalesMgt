@@ -39,7 +39,6 @@ import {
   type Department,
   type DepartmentInput,
 } from '@/lib/api/endpoints/departments'
-import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/lib/use-permissions'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
@@ -47,10 +46,8 @@ import { cn, formatNumber } from '@/lib/utils'
 
 export function DepartmentsPage() {
   const queryClient = useQueryClient()
-  const session = useAuthStore((s) => s.session)
-  const isSuperAdmin = session?.user.roles.includes('Super Admin') ?? false
   const { can } = usePermissions()
-  const canManage = can('departments.manage') || isSuperAdmin
+  const canManage = can('departments.manage')
 
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Department | null>(null)

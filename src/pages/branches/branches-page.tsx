@@ -152,7 +152,7 @@ export function BranchesPage() {
   const session = useAuthStore((s) => s.session)
   const isSuperAdmin = session?.user.roles.includes('Super Admin') ?? false
   const { can } = usePermissions()
-  const canManage = can('staff.edit') || isSuperAdmin
+  const canManage = can('staff.edit')
 
   const context = useAppStore((s) => s.context)
   const [search, setSearch] = useState('')
@@ -348,7 +348,6 @@ export function BranchesPage() {
               key={branch.id}
               branch={branch}
               canManage={canManage}
-              isSuperAdmin={isSuperAdmin}
               onDashboard={() => navigate('/dashboard')}
               onRoster={() => navigate('/shifts')}
               onStock={() => navigate('/inventory')}
@@ -662,7 +661,6 @@ function FilterPills({
 function BranchCard({
   branch,
   canManage,
-  isSuperAdmin,
   onDashboard,
   onRoster,
   onStock,
@@ -671,7 +669,6 @@ function BranchCard({
 }: {
   branch: Branch
   canManage: boolean
-  isSuperAdmin: boolean
   onDashboard: () => void
   onRoster: () => void
   onStock: () => void
@@ -741,7 +738,7 @@ function BranchCard({
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-surface-sunken text-primary">
               {nodeIcon(branch.type, 'h-5 w-5')}
             </span>
-            {(canManage || isSuperAdmin) && (
+            {canManage && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon-sm" aria-label="Branch actions">
@@ -755,7 +752,7 @@ function BranchCard({
                       Edit branch
                     </DropdownMenuItem>
                   )}
-                  {isSuperAdmin && (
+                  {canManage && (
                     <DropdownMenuItem
                       onClick={onDelete}
                       className="text-destructive focus:text-destructive"

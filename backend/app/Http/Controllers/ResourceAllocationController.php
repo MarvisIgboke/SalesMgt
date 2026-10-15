@@ -45,7 +45,7 @@ class ResourceAllocationController extends Controller
     {
         $user = $request->user();
 
-        abort_unless($user->isSuperAdmin() || $user->can('subscription.manage'), 403);
+        abort_unless($user->can('subscription.manage'), 403);
     }
 
     private function businessId(Request $request): int

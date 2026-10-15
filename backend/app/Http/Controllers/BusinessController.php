@@ -230,7 +230,7 @@ class BusinessController extends Controller
     public function storeBranch(Request $request)
     {
         $user = $request->user();
-        abort_unless($user->can('staff.edit') || $user->isSuperAdmin(), 403);
+        abort_unless($user->can('staff.edit'), 403);
 
         $data = $request->validate([
             'business_id' => ['nullable', 'integer'],
@@ -316,7 +316,7 @@ class BusinessController extends Controller
 
     public function updateBranch(Request $request, int $branch)
     {
-        abort_unless($request->user()->can('staff.edit') || $request->user()->isSuperAdmin(), 403);
+        abort_unless($request->user()->can('staff.edit'), 403);
 
         $record = $this->findBranchForUser($request, $branch);
         $data = $request->validate([
@@ -335,7 +335,7 @@ class BusinessController extends Controller
 
     public function destroyBranch(Request $request, int $branch)
     {
-        abort_unless($request->user()->isSuperAdmin(), 403);
+        abort_unless($request->user()->can('staff.edit'), 403);
 
         $record = $this->findBranchForUser($request, $branch);
         $record->delete();

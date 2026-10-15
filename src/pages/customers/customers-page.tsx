@@ -56,7 +56,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { usePermissions } from '@/lib/use-permissions'
-import { useAuthStore } from '@/stores/auth'
 import { toast } from '@/components/ui/sonner'
 import { ApiError } from '@/lib/api/errors'
 import { cn, formatCurrency, formatDate, formatNumber, formatRelative, initials } from '@/lib/utils'
@@ -128,10 +127,9 @@ function metricGlyph(kind: 'profiles' | 'ar' | 'retention' | 'gmv', className: s
 export function CustomersPage() {
   const queryClient = useQueryClient()
   const { can } = usePermissions()
-  const isSuperAdmin = useAuthStore((s) => s.session?.user.roles.includes('Super Admin') ?? false)
-  const canCreate = can('customers.create') || isSuperAdmin
-  const canEdit = can('customers.edit') || isSuperAdmin
-  const canCredit = can('customers.credit') || isSuperAdmin
+  const canCreate = can('customers.create')
+  const canEdit = can('customers.edit')
+  const canCredit = can('customers.credit')
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState(ALL)

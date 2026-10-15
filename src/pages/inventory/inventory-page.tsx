@@ -43,6 +43,7 @@ import { cn, debounce, formatCurrency, formatDateTime, formatNumber } from '@/li
 import { useAppStore } from '@/stores/app'
 import { inventoryApi, type StockLevel, type StockMovement } from '@/lib/api/endpoints/inventory'
 import { productsApi, type Product } from '@/lib/api/endpoints/products'
+import { usePermissions } from '@/lib/use-permissions'
 
 const MOVEMENT_LABELS: Record<string, string> = {
   in: 'Stock in',
@@ -83,6 +84,8 @@ export function InventoryPage() {
   const navigate = useNavigate()
   const branchId = useAppStore((s) => s.context?.branch?.id)
   const branchName = useAppStore((s) => s.context?.branch?.name)
+  const { can } = usePermissions()
+  const canAdjust = can('inventory.adjust')
 
   const [segment, setSegment] = useState<Segment>('items')
   const [search, setSearch] = useState('')
@@ -217,6 +220,7 @@ export function InventoryPage() {
       />
 
       <QuickActions
+        canAdjust={canAdjust}
         onAdjust={() => openAdjust()}
         onTransfer={() => navigate('/inventory/trace')}
         onExpiry={() => navigate('/inventory/expiry')}
@@ -267,9 +271,11 @@ export function InventoryPage() {
               description="No balances match this filter at the selected branch."
               icon={<PackageX className="h-6 w-6" />}
               action={
-                <Button variant="outline" size="sm" onClick={() => openAdjust()}>
-                  Post adjustment
-                </Button>
+                canAdjust ? (
+                  <Button variant="outline" size="sm" onClick={() => openAdjust()}>
+                    Post adjustment
+                  </Button>
+                ) : undefined
               }
             />
           )}
@@ -278,7 +284,12 @@ export function InventoryPage() {
             <>
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 {rows.map((row) => (
-                  <StockCard key={row.id} row={row} onAdjust={() => openAdjust(row.product_id)} />
+                  <StockCard
+                    key={row.id}
+                    row={row}
+                    canAdjust={canAdjust}
+                    onAdjust={() => openAdjust(row.product_id)}
+                  />
                 ))}
               </div>
               <Pagination
@@ -386,6 +397,7 @@ export function InventoryPage() {
       <ReconBanner
         damaged={stats?.damaged_count ?? 0}
         expired={stats?.expired_count ?? 0}
+        canAdjust={canAdjust}
         onExport={exportCsv}
         onCycleCount={() => openAdjust()}
       />
@@ -547,18 +559,29 @@ function MetricMosaic({
 }
 
 function QuickActions({
+  canAdjust,
   onAdjust,
   onTransfer,
   onExpiry,
   onMovements,
 }: {
+  canAdjust: boolean
   onAdjust: () => void
   onTransfer: () => void
   onExpiry: () => void
   onMovements: () => void
 }) {
   const actions = [
-    { label: '+ Stock Adjustment', icon: ArrowUpDown, onClick: onAdjust, tone: 'bg-primary/15 text-primary' },
+    ...(canAdjust
+      ? [
+          {
+            label: '+ Stock Adjustment',
+            icon: ArrowUpDown,
+            onClick: onAdjust,
+            tone: 'bg-primary/15 text-primary',
+          },
+        ]
+      : []),
     { label: 'Transfer / Trace', icon: ArrowLeftRight, onClick: onTransfer, tone: 'text-foreground' },
     { label: 'Expiry Vault', icon: Snowflake, onClick: onExpiry, tone: 'text-foreground' },
     { label: 'Movement Log', icon: ClipboardList, onClick: onMovements, tone: 'text-foreground' },
@@ -710,7 +733,15 @@ function DistributionBar({ inStock, low, out }: { inStock: number; low: number; 
   )
 }
 
-function StockCard({ row, onAdjust }: { row: StockLevel; onAdjust: () => void }) {
+function StockCard({
+  row,
+  canAdjust,
+  onAdjust,
+}: {
+  row: StockLevel
+  canAdjust: boolean
+  onAdjust: () => void
+}) {
   const tone =
     row.status === 'out_of_stock' ? 'text-destructive' : row.status === 'low' ? 'text-warning' : 'text-success'
   const statusLabel =
@@ -796,9 +827,11 @@ function StockCard({ row, onAdjust }: { row: StockLevel; onAdjust: () => void })
       </div>
 
       <div className="flex items-center gap-2 pt-0.5">
-        <Button variant="secondary" size="sm" className="flex-1" onClick={onAdjust}>
-          <ArrowUpDown /> Adjust Qty
-        </Button>
+        {canAdjust && (
+          <Button variant="secondary" size="sm" className="flex-1" onClick={onAdjust}>
+            <ArrowUpDown /> Adjust Qty
+          </Button>
+        )}
         {row.barcode ? (
           <Button
             variant="secondary"
@@ -829,11 +862,13 @@ function StockCard({ row, onAdjust }: { row: StockLevel; onAdjust: () => void })
 function ReconBanner({
   damaged,
   expired,
+  canAdjust,
   onExport,
   onCycleCount,
 }: {
   damaged: number
   expired: number
+  canAdjust: boolean
   onExport: () => void
   onCycleCount: () => void
 }) {
@@ -856,9 +891,11 @@ function ReconBanner({
           <FileDown /> Export CSV
         </Button>
       </div>
-      <Button onClick={onCycleCount} className="w-full">
-        <ScanLine /> Launch Cycle Count
-      </Button>
+      {canAdjust && (
+        <Button onClick={onCycleCount} className="w-full">
+          <ScanLine /> Launch Cycle Count
+        </Button>
+      )}
     </div>
   )
 }

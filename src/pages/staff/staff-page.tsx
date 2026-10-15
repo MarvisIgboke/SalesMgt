@@ -163,7 +163,7 @@ export function StaffPage() {
   const currentUserId = session?.user.id ?? -1
   const { can } = usePermissions()
   const canManage = can('staff.permissions')
-  const canEdit = can('staff.edit') || (session?.user.roles.includes('Super Admin') ?? false)
+  const canEdit = can('staff.edit')
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState(ALL)

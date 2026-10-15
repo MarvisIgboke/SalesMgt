@@ -193,7 +193,7 @@ class SettingsController extends Controller
     {
         $user = $request->user();
 
-        if ($user->can('wallet.manage') || $user->can('staff.permissions') || $user->can('audit.view')) {
+        if ($user->can('wallet.manage') || $user->can('staff.permissions')) {
             return;
         }
 

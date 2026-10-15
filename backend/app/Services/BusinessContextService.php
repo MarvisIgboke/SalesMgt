@@ -14,9 +14,16 @@ class BusinessContextService
 {
     public function context(?int $branchId = null, bool $fallback = true): array
     {
-        $business = Business::query()
-            ->with(['subscription.plan', 'wallet'])
-            ->findOrFail(TenantContext::businessId());
+        $businessId = TenantContext::businessId();
+        $business = $businessId !== null
+            ? Business::query()->with(['subscription.plan', 'wallet'])->find($businessId)
+            : null;
+
+        // Platform operators (a Super Admin without a business) get a neutral
+        // context so the app shell renders instead of failing with a 404.
+        if ($business === null) {
+            return $this->platformContext();
+        }
 
         $subscription = $business->subscription;
         $wallet = $business->wallet;
@@ -36,6 +43,38 @@ class BusinessContextService
             'branch' => Presenter::branch($branch),
             'subscription' => Presenter::subscription($business, $subscription, $wallet),
             'wallet' => Presenter::wallet($wallet, $business->currency),
+        ];
+    }
+
+    /**
+     * A neutral context for a platform operator with no business of their own.
+     */
+    private function platformContext(): array
+    {
+        $subscription = [
+            'status' => 'none',
+            'plan' => 'No Plan',
+            'expiry_date' => null,
+            'trial_ends_at' => null,
+            'limits' => Subscription::defaultLimits(),
+        ];
+
+        return [
+            'business' => [
+                'id' => 0,
+                'name' => 'Platform',
+                'slug' => null,
+                'logo_url' => null,
+                'currency' => 'NGN',
+                'timezone' => config('app.timezone', 'UTC'),
+                'address' => null,
+                'email' => null,
+                'phone' => null,
+                'subscription' => $subscription,
+            ],
+            'branch' => null,
+            'subscription' => $subscription,
+            'wallet' => ['balance' => 0, 'currency' => 'NGN', 'pending' => 0],
         ];
     }
 

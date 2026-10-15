@@ -11,7 +11,17 @@ class DashboardService
 {
     public function build(string $period = 'today', ?int $branchId = null, ?string $fromDate = null, ?string $toDate = null): array
     {
-        $business = Business::query()->with('wallet')->findOrFail(TenantContext::businessId());
+        $businessId = TenantContext::businessId();
+        $business = $businessId !== null
+            ? Business::query()->with('wallet')->find($businessId)
+            : null;
+
+        // Platform operators (e.g. a Super Admin without a business) still get a
+        // well-formed, zeroed dashboard instead of a 404.
+        if ($business === null) {
+            return $this->emptyDashboard($period);
+        }
+
         $currency = $business->currency;
         $branchId ??= TenantContext::branchId();
 
@@ -118,6 +128,40 @@ class DashboardService
                 ->select('id', 'action', 'entity_type', 'entity_id', 'created_at')
                 ->get()
                 ->all(),
+        ];
+    }
+
+    /**
+     * A zero-value dashboard for callers without a business context.
+     */
+    private function emptyDashboard(string $period): array
+    {
+        $money = fn (): array => ['amount' => 0.0, 'currency' => 'NGN'];
+
+        return [
+            'kpis' => [
+                'period' => $period,
+                'sales' => $money(),
+                'transaction_count' => 0,
+                'gross_profit' => $money(),
+                'expenses' => $money(),
+                'customer_credit' => $money(),
+                'wallet_balance' => $money(),
+                'payment_breakdown' => [],
+                'pending_payments' => 0,
+                'pending_inventory_approvals' => 0,
+                'low_stock_count' => 0,
+                'expiring_stock_count' => 0,
+                'expired_stock_count' => 0,
+            ],
+            'sales_trend' => [],
+            'payment_breakdown' => [],
+            'branch_performance' => [],
+            'staff_performance' => [],
+            'latest_sales' => [],
+            'low_stock' => [],
+            'expiring_stock' => [],
+            'recent_activity' => [],
         ];
     }
 

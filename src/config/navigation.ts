@@ -55,7 +55,7 @@ export const navSections: NavSection[] = [
     title: 'Management',
     items: [
       { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, section: 'management', permissions: ['dashboard.view'] },
-      { label: 'POS / Sales', path: '/pos', icon: ShoppingCart, section: 'management', permissions: ['sales.create', 'sales.view'] },
+      { label: 'POS / Sales', path: '/pos', icon: ShoppingCart, section: 'management', permissions: ['sales.create'] },
       { label: 'Sales History', path: '/sales', icon: ReceiptText, section: 'management', permissions: ['sales.view'] },
       { label: 'Finance', path: '/finance', icon: Wallet, section: 'management', permissions: ['finance.view', 'finance.payment_approve', 'finance.payment_reject', 'finance.reconcile'], badge: { key: 'pendingFinance', variant: 'primary' } },
     ],
@@ -97,7 +97,7 @@ export const navSections: NavSection[] = [
       { label: 'Notifications', path: '/notifications', icon: Bell, section: 'system', permissions: ['notifications.view'] },
       { label: 'Subscription', path: '/subscription', icon: CreditCard, section: 'system', permissions: ['subscription.view'] },
       { label: 'Resource Allocation', path: '/subscription/allocation', icon: Layers, section: 'system', permissions: ['subscription.manage'] },
-      { label: 'Settings', path: '/settings', icon: Settings, section: 'system' },
+      { label: 'Settings', path: '/settings', icon: Settings, section: 'system', permissions: ['wallet.manage', 'staff.permissions'] },
     ],
   },
   {
