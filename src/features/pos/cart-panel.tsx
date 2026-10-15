@@ -19,9 +19,11 @@ import { cn, formatCurrency } from '@/lib/utils'
 interface CartPanelProps {
   onPay: () => void
   paying: boolean
+  blocked?: boolean
+  blockedReason?: string
 }
 
-export function CartPanel({ onPay, paying }: CartPanelProps) {
+export function CartPanel({ onPay, paying, blocked = false, blockedReason }: CartPanelProps) {
   const { cart, cartLoading, updateItem, removeItem, setCustomer } = usePosCart()
 
   const customersQuery = useQuery({
@@ -191,10 +193,14 @@ export function CartPanel({ onPay, paying }: CartPanelProps) {
           variant={cart.requires_approval ? 'warning' : 'success'}
           className="mt-3 w-full"
           loading={paying}
+          disabled={blocked}
           onClick={onPay}
         >
           {cart.requires_approval ? 'Submit for approval' : 'Charge sale'}
         </Button>
+        {blocked && blockedReason && (
+          <p className="mt-2 text-center text-xs text-destructive">{blockedReason}</p>
+        )}
       </div>
     </div>
   )

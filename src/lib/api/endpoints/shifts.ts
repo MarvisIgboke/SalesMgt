@@ -237,7 +237,7 @@ export const shiftApi = {
       input,
     ),
 
-  history: (params?: { page?: number; per_page?: number; status?: ShiftStatus }) =>
+  history: (params?: { page?: number; per_page?: number; status?: ShiftStatus; branch_id?: number }) =>
     http.get<Paginated<Shift>>('/shifts', { params }),
 
   historySummary: (params?: { branch_id?: number; from?: string; to?: string }) =>

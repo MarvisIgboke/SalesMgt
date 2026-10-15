@@ -417,7 +417,7 @@ export function DashboardPage() {
               title={`${k.pending_inventory_approvals} inventory adjustment${k.pending_inventory_approvals === 1 ? '' : 's'} pending`}
               value="Inventory"
               description="Stock adjustments awaiting approval before they post to inventory."
-              to="/inventory"
+              to="/inventory/adjustments"
               cta="Approve adjustments"
             />
           )}

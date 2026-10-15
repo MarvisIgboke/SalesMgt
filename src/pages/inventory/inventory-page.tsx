@@ -924,8 +924,13 @@ function AdjustDialog({
         quantity: input.quantity,
         reason: input.reason,
       }),
-    onSuccess: () => {
-      toast.success('Stock adjusted')
+    onSuccess: (res) => {
+      toast.success(
+        res.message ??
+          (res.data?.status === 'pending'
+            ? 'Adjustment submitted for approval.'
+            : 'Stock adjusted'),
+      )
       void queryClient.invalidateQueries({ queryKey: ['inventory'] })
       void queryClient.invalidateQueries({ queryKey: ['products'] })
       onClose()

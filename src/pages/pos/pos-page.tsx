@@ -116,7 +116,27 @@ export function PosPage() {
   })
   const session = sessionQuery.data?.data ?? null
   const requiresSession = !can('shifts.operate')
-  const needsSession = requiresSession && !session
+
+  const shiftConfigQuery = useQuery({
+    queryKey: ['shift-config', branchId],
+    queryFn: () => shiftApi.config(),
+    enabled: !!branchId,
+    retry: false,
+  })
+  const shiftsEnabled = shiftConfigQuery.data?.data.shifts_enabled ?? true
+  const requireSaleSession = shiftConfigQuery.data?.data.require_sale_session ?? true
+  const needsSession = requiresSession && requireSaleSession && !session
+
+  const branchShiftQuery = useQuery({
+    queryKey: ['shifts', 'open', branchId],
+    queryFn: () => shiftApi.history({ status: 'open', branch_id: branchId, per_page: 100 }),
+    enabled: !!branchId && shiftsEnabled,
+    retry: false,
+  })
+  const branchShift =
+    (branchShiftQuery.data?.data ?? []).find((item: Shift) => item.branch_id === branchId) ?? null
+  const shiftBlocked = shiftsEnabled && !!branchId && !branchShift
+  const payBlocked = shiftBlocked || needsSession
 
   const customerQuery = useQuery({
     queryKey: ['customer', cart?.customer_id],
@@ -143,6 +163,7 @@ export function PosPage() {
         !payOpen &&
         !cartOpen &&
         !customerOpen &&
+        !payBlocked &&
         (cart?.items.length ?? 0) > 0
       ) {
         e.preventDefault()
@@ -151,7 +172,7 @@ export function PosPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [scannerOpen, payOpen, cartOpen, customerOpen, cart])
+  }, [scannerOpen, payOpen, cartOpen, customerOpen, cart, payBlocked])
 
   const handleBarcode = async (barcode: string) => {
     setMatched(null)
@@ -219,24 +240,24 @@ export function PosPage() {
         branchName={context?.branch?.name ?? 'All branches'}
         businessName={context?.business.name ?? ''}
         userName={userName ?? 'Cashier'}
-        shift={shift}
+        shift={branchShift ?? shift}
         customer={customer}
         onCustomerClick={() => setCustomerOpen(true)}
       />
 
-      {requiresSession && !needsSession && !shift && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2">
-          <span className="flex items-center gap-1.5 text-sm font-medium text-warning">
+      {shiftBlocked && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
             <ShieldAlert className="h-4 w-4" />
-            No store shift is open. A manager must open the shift first.
+            No shift is open. A manager must open a shift before sales can be taken.
           </span>
-          <Link to="/shifts" className="text-xs font-semibold text-warning underline-offset-2 hover:underline">
+          <Link to="/shifts" className="text-xs font-semibold text-destructive underline-offset-2 hover:underline">
             Go to shifts
           </Link>
         </div>
       )}
 
-      {needsSession && (
+      {!shiftBlocked && needsSession && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2">
           <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
             <ShieldAlert className="h-4 w-4" />
@@ -375,7 +396,18 @@ export function PosPage() {
         <div className="hidden lg:block">
           <div className="sticky top-20 h-[calc(100dvh-180px)]">
             <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-card">
-              <CartPanel onPay={() => setPayOpen(true)} paying={false} />
+              <CartPanel
+                onPay={() => setPayOpen(true)}
+                paying={false}
+                blocked={payBlocked}
+                blockedReason={
+                  shiftBlocked
+                    ? 'Open a shift before charging this sale.'
+                    : needsSession
+                      ? 'Open your sale before charging.'
+                      : undefined
+                }
+              />
             </div>
           </div>
         </div>
@@ -397,6 +429,14 @@ export function PosPage() {
                 setPayOpen(true)
               }}
               paying={false}
+              blocked={payBlocked}
+              blockedReason={
+                shiftBlocked
+                  ? 'Open a shift before charging this sale.'
+                  : needsSession
+                    ? 'Open your sale before charging.'
+                    : undefined
+              }
             />
           </div>
         </SheetContent>
@@ -446,7 +486,7 @@ export function PosPage() {
               <Button
                 className="col-span-8 h-11"
                 onClick={() => setPayOpen(true)}
-                disabled={!!cart?.requires_approval}
+                disabled={!!cart?.requires_approval || payBlocked}
               >
                 {cart?.requires_approval ? 'Needs approval' : 'Pay'}
                 <ArrowRight className="h-4 w-4" />

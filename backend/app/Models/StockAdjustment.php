@@ -12,13 +12,16 @@ class StockAdjustment extends Model
 
     protected $fillable = [
         'business_id', 'branch_id', 'product_id', 'variant_id', 'quantity',
-        'reason', 'status', 'created_by', 'decided_by', 'decided_at',
+        'balance_before', 'balance_after', 'reason', 'status', 'created_by',
+        'decided_by', 'decided_at', 'decision_notes',
     ];
 
     protected function casts(): array
     {
         return [
             'quantity' => 'float',
+            'balance_before' => 'float',
+            'balance_after' => 'float',
             'decided_at' => 'datetime',
         ];
     }
@@ -36,5 +39,15 @@ class StockAdjustment extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function decider(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'decided_by');
     }
 }

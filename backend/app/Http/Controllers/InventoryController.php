@@ -561,13 +561,56 @@ class InventoryController extends Controller
     {
         $this->authorize($request, ['inventory.approve', 'inventory.view']);
 
+        $status = $request->query('status', 'pending');
+
         $paginator = StockAdjustment::query()
-            ->with(['product', 'variant', 'branch'])
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')), fn ($q) => $q->where('status', 'pending'))
+            ->with(['product', 'variant', 'branch', 'creator', 'decider'])
+            ->when($status !== 'all', fn ($q) => $q->where('status', $status))
             ->orderByDesc('id')
             ->paginate($this->perPage($request));
 
         return ApiResponse::paginator($paginator, map: fn (StockAdjustment $adjustment) => $this->presentAdjustment($adjustment));
+    }
+
+    public function adjustments(Request $request)
+    {
+        $this->authorize($request, ['inventory.view']);
+
+        $branchId = $this->branchId($request);
+        $status = (string) $request->query('status', 'all');
+
+        $base = fn () => StockAdjustment::query()
+            ->when($branchId !== null, fn ($q) => $q->where('stock_adjustments.branch_id', $branchId))
+            ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', (int) $request->query('product_id')))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = '%'.$request->string('search').'%';
+                $q->where(function ($sub) use ($term) {
+                    $sub->whereHas('product', fn ($p) => $p->where('name', 'like', $term)->orWhere('sku', 'like', $term))
+                        ->orWhereHas('variant', fn ($v) => $v->where('name', 'like', $term)->orWhere('sku', 'like', $term));
+                });
+            })
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('created_at', '>=', $request->query('date_from')))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('created_at', '<=', $request->query('date_to')));
+
+        $paginator = $base()
+            ->with(['product', 'variant', 'branch', 'creator', 'decider'])
+            ->when($status !== 'all', fn ($q) => $q->where('status', $status))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($this->perPage($request));
+
+        $summary = [
+            'pending' => (clone $base())->where('status', 'pending')->count(),
+            'approved' => (clone $base())->where('status', 'approved')->count(),
+            'rejected' => (clone $base())->where('status', 'rejected')->count(),
+            'applied_quantity' => (float) (clone $base())->where('status', 'approved')->sum('quantity'),
+        ];
+
+        return ApiResponse::paginator(
+            $paginator,
+            map: fn (StockAdjustment $adjustment) => $this->presentAdjustment($adjustment),
+            extra: ['summary' => $summary],
+        );
     }
 
     public function approve(Request $request, int $adjustment)
@@ -704,6 +747,9 @@ class InventoryController extends Controller
             'variant_name' => $adjustment->variant?->name,
             'type' => 'adjustment',
             'quantity' => (float) $adjustment->quantity,
+            'status' => $adjustment->status,
+            'balance_before' => $adjustment->balance_before === null ? null : (float) $adjustment->balance_before,
+            'balance_after' => $adjustment->balance_after === null ? null : (float) $adjustment->balance_after,
             'reason' => $adjustment->reason,
             'reference' => 'ADJ-'.$adjustment->id,
             'happened_at' => $adjustment->created_at?->toIso8601String(),
@@ -714,15 +760,26 @@ class InventoryController extends Controller
     {
         return [
             'id' => $adjustment->id,
+            'reference' => 'ADJ-'.$adjustment->id,
             'product_id' => $adjustment->product_id,
             'product_name' => $adjustment->product?->name,
+            'variant_id' => $adjustment->variant_id,
             'variant_name' => $adjustment->variant?->name,
+            'sku' => $adjustment->variant?->sku ?? $adjustment->product?->sku,
             'branch_id' => $adjustment->branch_id,
             'branch_name' => $adjustment->branch?->name,
             'quantity' => (float) $adjustment->quantity,
+            'balance_before' => $adjustment->balance_before === null ? null : (float) $adjustment->balance_before,
+            'balance_after' => $adjustment->balance_after === null ? null : (float) $adjustment->balance_after,
             'reason' => $adjustment->reason,
+            'decision_notes' => $adjustment->decision_notes,
             'status' => $adjustment->status,
+            'created_by' => $adjustment->created_by,
+            'created_by_name' => $adjustment->creator?->name,
+            'decided_by' => $adjustment->decided_by,
+            'decided_by_name' => $adjustment->decider?->name,
             'created_at' => $adjustment->created_at?->toIso8601String(),
+            'decided_at' => $adjustment->decided_at?->toIso8601String(),
         ];
     }
 

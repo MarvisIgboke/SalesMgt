@@ -14,7 +14,6 @@ use App\Models\ProductBarcode;
 use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\SaleApproval;
-use App\Models\Shift;
 use App\Models\StockBatch;
 use App\Models\User;
 use App\Support\ReferenceGenerator;
@@ -30,6 +29,7 @@ class PosService
         private readonly CustomerLedgerService $ledger,
         private readonly RiskService $risk,
         private readonly SaleSessionService $saleSessions,
+        private readonly ShiftService $shifts,
     ) {
     }
 
@@ -498,23 +498,28 @@ class PosService
 
         $branchId = $cart->branch_id === null ? null : (int) $cart->branch_id;
 
-        // A Sales Representative must operate inside an open sale, which itself requires an open shift.
-        // Users who can run the store shift (Store Manager / admin) transact without a personal sale.
+        // A POS sale may only be taken while a shift is open at the branch. When a
+        // business has turned shifts off entirely, no shift is required.
+        $shiftsEnabled = BusinessSetting::bool(ShiftService::SETTING_ENABLED, true, $branchId);
+        $shift = $this->shifts->currentForBranch($branchId);
+
+        if ($shiftsEnabled && $branchId !== null && $shift === null) {
+            throw new ApiException('NO_OPEN_SHIFT', 'Open a shift before taking payments.', 422);
+        }
+
+        // A Sales Representative must also operate inside an open sale, which itself
+        // requires an open shift. Users who can run the store shift transact without a
+        // personal sale.
         $session = $branchId === null ? null : $this->saleSessions->currentForUser($user->id, $branchId);
-        $requireSession = ! $user->can('shifts.operate')
+        $requireSession = $shift !== null
+            && ! $user->can('shifts.operate')
             && BusinessSetting::bool(ShiftService::SETTING_REQUIRE_SALE_SESSION, true, $branchId);
 
         if ($requireSession && $session === null) {
             throw new ApiException('NO_SALE_OPEN', 'Open a sale before taking a payment.', 422);
         }
 
-        $shift = $session?->shift
-            ?? ($branchId === null ? null : Shift::query()
-                ->where('branch_id', $branchId)
-                ->where('status', 'open')
-                ->latest('opened_at')
-                ->first());
-
+        $shift ??= $session?->shift;
         $shiftId = $shift?->id;
         $sessionId = $session?->id;
 

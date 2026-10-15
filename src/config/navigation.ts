@@ -22,6 +22,7 @@ import {
   Tags,
   Building2,
   Layers,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -67,6 +68,7 @@ export const navSections: NavSection[] = [
       { label: 'Catalog', path: '/catalog', icon: Tags, section: 'operations', permissions: ['products.view', 'products.create', 'products.edit'] },
       { label: 'Departments', path: '/departments', icon: Layers, section: 'operations', permissions: ['departments.view'] },
       { label: 'Inventory', path: '/inventory', icon: Boxes, section: 'operations', permissions: ['inventory.view'], badge: { key: 'lowStock', variant: 'warning' } },
+      { label: 'Adjust Audit Trail', path: '/inventory/adjustments', icon: ClipboardList, section: 'operations', permissions: ['inventory.view'], badge: { key: 'pendingInventory', variant: 'primary' } },
       { label: 'Stock Trace', path: '/inventory/trace', icon: History, section: 'operations', permissions: ['inventory.view'] },
       { label: 'Expiry Manager', path: '/inventory/expiry', icon: CalendarClock, section: 'operations', permissions: ['inventory.view'], badge: { key: 'expiring', variant: 'destructive' } },
       { label: 'Purchasing', path: '/purchasing', icon: ShoppingBag, section: 'operations', permissions: ['purchases.create', 'purchases.approve', 'purchases.receive'] },

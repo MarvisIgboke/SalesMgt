@@ -186,12 +186,15 @@ class InventoryService
         }
 
         return DB::transaction(function () use ($branchId, $productId, $variantId, $quantity, $reason, $userId, $canApprove) {
+            $balanceBefore = $canApprove ? (float) $this->balance($branchId, $productId, $variantId)->quantity : null;
+
             $adjustment = StockAdjustment::create([
                 'business_id' => TenantContext::businessId(),
                 'branch_id' => $branchId,
                 'product_id' => $productId,
                 'variant_id' => $variantId,
                 'quantity' => $quantity,
+                'balance_before' => $balanceBefore,
                 'reason' => $reason,
                 'status' => $canApprove ? 'approved' : 'pending',
                 'created_by' => $userId,
@@ -200,7 +203,10 @@ class InventoryService
             ]);
 
             if ($canApprove) {
-                $this->move($branchId, $productId, $variantId, $quantity, 'adjustment', $reason ?? 'Stock adjustment', null, null, $userId);
+                $this->move($branchId, $productId, $variantId, $quantity, 'adjustment', $reason ?? 'Stock adjustment', 'ADJ-'.$adjustment->id, null, $userId);
+                $adjustment->forceFill([
+                    'balance_after' => (float) $this->balance($branchId, $productId, $variantId)->quantity,
+                ])->save();
             }
 
             return $adjustment;
@@ -218,14 +224,16 @@ class InventoryService
         }
 
         return DB::transaction(function () use ($adjustment, $decision, $userId, $notes) {
-            $adjustment->forceFill([
-                'status' => $decision,
-                'decided_by' => $userId,
-                'decided_at' => now(),
-                'reason' => $notes ?? $adjustment->reason,
-            ])->save();
+            $balanceBefore = null;
+            $balanceAfter = null;
 
             if ($decision === 'approved') {
+                $balanceBefore = (float) $this->balance(
+                    (int) $adjustment->branch_id,
+                    (int) $adjustment->product_id,
+                    $adjustment->variant_id === null ? null : (int) $adjustment->variant_id,
+                )->quantity;
+
                 $this->move(
                     (int) $adjustment->branch_id,
                     (int) $adjustment->product_id,
@@ -237,7 +245,22 @@ class InventoryService
                     null,
                     $userId,
                 );
+
+                $balanceAfter = (float) $this->balance(
+                    (int) $adjustment->branch_id,
+                    (int) $adjustment->product_id,
+                    $adjustment->variant_id === null ? null : (int) $adjustment->variant_id,
+                )->quantity;
             }
+
+            $adjustment->forceFill([
+                'status' => $decision,
+                'decided_by' => $userId,
+                'decided_at' => now(),
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+                'decision_notes' => $notes,
+            ])->save();
 
             return $adjustment;
         });

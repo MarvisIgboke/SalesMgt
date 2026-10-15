@@ -135,7 +135,7 @@ final class PermissionCatalog
             'sales.view', 'sales.create', 'sales.edit', 'sales.cancel', 'sales.discount', 'sales.credit', 'sales.refund', 'sales.price_override',
             'products.view', 'products.create', 'products.edit', 'products.delete',
             'customers.view', 'customers.create', 'customers.edit', 'customers.credit',
-            'inventory.view', 'inventory.adjust', 'inventory.receive', 'inventory.transfer',
+            'inventory.view', 'inventory.adjust', 'inventory.receive', 'inventory.transfer', 'inventory.approve',
             'finance.view',
             'expenses.create', 'expenses.approve',
             'purchases.create', 'purchases.approve', 'purchases.receive',

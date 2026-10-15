@@ -167,6 +167,7 @@ Route::get('/inventory/levels', [InventoryController::class, 'levels']);
 Route::get('/inventory/movements', [InventoryController::class, 'movements']);
 Route::get('/inventory/trace/{product}', [InventoryController::class, 'trace'])->whereNumber('product');
 Route::post('/inventory/adjustments', [InventoryController::class, 'adjust'])->middleware('idempotent');
+Route::get('/inventory/adjustments', [InventoryController::class, 'adjustments']);
 Route::get('/inventory/transfers', [InventoryController::class, 'transfers']);
 Route::post('/inventory/transfers', [InventoryController::class, 'transfer'])->middleware('idempotent');
 Route::get('/inventory/goods-received', [InventoryController::class, 'goodsReceivedList']);

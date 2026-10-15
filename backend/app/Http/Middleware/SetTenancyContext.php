@@ -31,7 +31,9 @@ class SetTenancyContext
             throw new ApiException('BUSINESS_MISMATCH', 'Business access denied.', 403);
         }
 
-        if ($businessId === null) {
+        // A Super Admin is a platform operator and needs no business of its own,
+        // e.g. to create the very first business. Everyone else must have one.
+        if ($businessId === null && ! $user->isSuperAdmin()) {
             throw new ApiException('NO_BUSINESS', 'This account is not attached to a business.', 403);
         }
 

@@ -7,6 +7,7 @@ use App\Models\BusinessSetting;
 use App\Models\Payment;
 use App\Models\Refund;
 use App\Models\Sale;
+use App\Models\SaleSession;
 use App\Models\Shift;
 use App\Models\ShiftCashMovement;
 use App\Models\User;
@@ -21,15 +22,22 @@ class ShiftService
 
     public const SETTING_REQUIRE_RECONCILIATION = 'require_cash_reconciliation';
 
+    public const SETTING_REQUIRE_SALE_SESSION = 'require_sale_session';
+
+    public function __construct(private readonly SaleSessionService $saleSessions)
+    {
+    }
+
     public function config(): array
     {
         return [
             'shifts_enabled' => BusinessSetting::bool(self::SETTING_ENABLED, true, TenantContext::branchId()),
             'require_cash_reconciliation' => BusinessSetting::bool(self::SETTING_REQUIRE_RECONCILIATION, true, TenantContext::branchId()),
+            'require_sale_session' => BusinessSetting::bool(self::SETTING_REQUIRE_SALE_SESSION, true, TenantContext::branchId()),
         ];
     }
 
-    public function setConfig(bool $shiftsEnabled = null, bool $requireReconciliation = null): array
+    public function setConfig(bool $shiftsEnabled = null, bool $requireReconciliation = null, bool $requireSaleSession = null): array
     {
         $businessId = TenantContext::businessId();
         $branchId = TenantContext::branchId();
@@ -42,7 +50,32 @@ class ShiftService
             $this->store($businessId, $branchId, self::SETTING_REQUIRE_RECONCILIATION, $requireReconciliation);
         }
 
+        if ($requireSaleSession !== null) {
+            $this->store($businessId, $branchId, self::SETTING_REQUIRE_SALE_SESSION, $requireSaleSession);
+        }
+
         return $this->config();
+    }
+
+    public function enabled(?int $branchId = null): bool
+    {
+        return BusinessSetting::bool(self::SETTING_ENABLED, true, $branchId ?? TenantContext::branchId());
+    }
+
+    /**
+     * The open shift currently running at a branch (opened by any manager).
+     */
+    public function currentForBranch(?int $branchId): ?Shift
+    {
+        if ($branchId === null) {
+            return null;
+        }
+
+        return Shift::query()
+            ->where('branch_id', $branchId)
+            ->where('status', 'open')
+            ->latest('opened_at')
+            ->first();
     }
 
     public function current(int $userId, ?int $branchId): ?Shift
@@ -309,6 +342,14 @@ class ShiftService
                 $expected,
             ),
             'movements' => $movements->map(fn (ShiftCashMovement $movement) => $this->presentMovement($movement))->values()->all(),
+            'sale_sessions' => SaleSession::query()
+                ->with(['shift', 'branch.business', 'user', 'closedBy'])
+                ->where('shift_id', $shift->id)
+                ->orderByDesc('id')
+                ->get()
+                ->map(fn (SaleSession $session) => $this->saleSessions->present($session))
+                ->values()
+                ->all(),
         ];
     }
 

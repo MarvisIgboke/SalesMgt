@@ -7,6 +7,7 @@ use App\Models\GoodsReceipt;
 use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\Shift;
 use App\Models\StockBatch;
 use App\Models\Subscription;
 use App\Models\User;
@@ -64,6 +65,30 @@ class ApiFlowTest extends TestCase
         $sale = Sale::query()->firstOrFail();
         $this->assertSame('completed', $sale->status);
         $this->assertSame('paid', $sale->payment_status);
+    }
+
+    public function test_charge_is_blocked_when_no_shift_is_open(): void
+    {
+        [$admin, $branch, $product] = $this->scene('WTR-75');
+        $this->ensureStock($product, $branch, 10);
+
+        Shift::withoutGlobalScopes()
+            ->where('reference', 'SHF-TEST-'.$branch->id)
+            ->update(['status' => 'closed', 'closed_at' => now()]);
+
+        $cart = $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+
+        $this->postJson('/api/v1/pos/sales/charge', [
+            'reference' => $cart->json('data.reference'),
+            'method' => 'cash',
+            'cash_received' => 200,
+        ])->assertStatus(422)->assertJsonPath('code', 'NO_OPEN_SHIFT');
+
+        $this->assertSame(0, Sale::query()->count());
+        $this->assertSame(10.0, $this->balanceFor($product, $branch));
     }
 
     public function test_charge_replays_when_the_same_client_request_id_is_reused(): void
@@ -238,7 +263,24 @@ class ApiFlowTest extends TestCase
         $this->actingAs($admin, 'sanctum')
             ->withHeaders(['Accept' => 'application/json', 'X-Branch-Id' => (string) $branch->id]);
 
+        $this->openShift($admin, $branch);
+
         return [$admin, $branch, $product];
+    }
+
+    private function openShift(User $user, Branch $branch): Shift
+    {
+        return Shift::query()->create([
+            'business_id' => $branch->business_id,
+            'branch_id' => $branch->id,
+            'reference' => 'SHF-TEST-'.$branch->id,
+            'user_id' => $user->id,
+            'status' => 'open',
+            'assigned_user_ids' => [],
+            'opened_at' => now(),
+            'opening_cash' => 0,
+            'expected_cash' => 0,
+        ]);
     }
 
     private function ensureStock(Product $product, Branch $branch, float $quantity): void

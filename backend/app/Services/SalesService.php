@@ -85,6 +85,11 @@ class SalesService
             ->when($filters['user_id'] ?? null, fn ($q, $v) => $q->where('user_id', (int) $v))
             ->when($filters['payment_method'] ?? null, fn ($q, $v) => $q->whereHas('payments', fn ($p) => $p->where('method', $v)))
             ->when($filters['product_id'] ?? null, fn ($q, $v) => $q->whereHas('items', fn ($i) => $i->where('product_id', (int) $v)))
+            ->when($filters['department_id'] ?? null, function ($q, $v) {
+                $q->whereHas('items', function ($i) use ($v) {
+                    $i->whereHas('product', fn ($p) => $p->where('department_id', (int) $v));
+                });
+            })
             ->when($filters['from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
             ->when($filters['to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
             ->when($filters['search'] ?? null, function ($q, $v) {

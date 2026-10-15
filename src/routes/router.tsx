@@ -37,6 +37,11 @@ const InventoryPage = lazy(() =>
 const StockTracePage = lazy(() =>
   import('@/pages/inventory/stock-trace-page').then((m) => ({ default: m.StockTracePage })),
 )
+const AdjustmentTrailPage = lazy(() =>
+  import('@/pages/inventory/adjustment-trail-page').then((m) => ({
+    default: m.AdjustmentTrailPage,
+  })),
+)
 const ExpiryPage = lazy(() =>
   import('@/pages/expiry/expiry-page').then((m) => ({ default: m.ExpiryPage })),
 )
@@ -285,6 +290,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Page variant="cards">
                     <StockTracePage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/inventory/adjustments',
+                element: (
+                  <Page variant="cards">
+                    <AdjustmentTrailPage />
                   </Page>
                 ),
               },

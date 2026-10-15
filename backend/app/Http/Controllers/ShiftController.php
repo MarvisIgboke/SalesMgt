@@ -32,9 +32,14 @@ class ShiftController extends Controller
         $data = $request->validate([
             'shifts_enabled' => ['nullable', 'boolean'],
             'require_cash_reconciliation' => ['nullable', 'boolean'],
+            'require_sale_session' => ['nullable', 'boolean'],
         ]);
 
-        $config = $this->shifts->setConfig($data['shifts_enabled'] ?? null, $data['require_cash_reconciliation'] ?? null);
+        $config = $this->shifts->setConfig(
+            $data['shifts_enabled'] ?? null,
+            $data['require_cash_reconciliation'] ?? null,
+            $data['require_sale_session'] ?? null,
+        );
 
         AuditLog::record('shifts.config_updated', 'business_setting', null, $config);
 
@@ -221,6 +226,7 @@ class ShiftController extends Controller
         $paginator = Shift::query()
             ->with(['branch', 'user'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
+            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')))
             ->orderByDesc('id')
             ->paginate($this->perPage($request));
 

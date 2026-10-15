@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
   Banknote,
+  Building2,
   CalendarDays,
   Clock,
   Coins,
@@ -60,6 +61,7 @@ import {
 import { shiftApi } from '@/lib/api/endpoints/shifts'
 import { staffApi } from '@/lib/api/endpoints/staff'
 import { productsApi } from '@/lib/api/endpoints/products'
+import { departmentsApi } from '@/lib/api/endpoints/departments'
 import { useAppStore } from '@/stores/app'
 import { usePermissions } from '@/lib/use-permissions'
 import { formatCurrency, formatDateTime, formatNumber, cn } from '@/lib/utils'
@@ -193,22 +195,24 @@ export function SalesHistoryPage() {
   const [repId, setRepId] = useState('all')
   const [method, setMethod] = useState('all')
   const [productId, setProductId] = useState('all')
+  const [departmentId, setDepartmentId] = useState('all')
   const [status, setStatus] = useState('all')
   const [selected, setSelected] = useState<number | null>(null)
 
   const { data, isFetching, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['sales', { page, search, from, to, repId, method, productId, status }],
+    queryKey: ['sales', { page, search, from, to, repId, method, productId, departmentId, status }],
     queryFn: () =>
       salesApi.list({
         page,
-        per_page: 15,
+        per_page: 20,
         search: search || undefined,
         from: from || undefined,
         to: to || undefined,
-        user_id: repId === 'all' ? undefined : Number(repId),
-        payment_method: method === 'all' ? undefined : method,
-        product_id: productId === 'all' ? undefined : Number(productId),
-        status: status === 'all' ? undefined : status,
+        user_id: repId !== 'all' ? Number(repId) : undefined,
+        payment_method: method !== 'all' ? method : undefined,
+        product_id: productId !== 'all' ? Number(productId) : undefined,
+        department_id: departmentId !== 'all' ? Number(departmentId) : undefined,
+        status: status !== 'all' ? status : undefined,
       }),
     placeholderData: (prev) => prev,
   })
@@ -220,8 +224,14 @@ export function SalesHistoryPage() {
   })
 
   const products = useQuery({
-    queryKey: ['products', { per_page: 100 }],
-    queryFn: () => productsApi.list({ per_page: 100 }),
+    queryKey: ['products', 'for-sale-filter'],
+    queryFn: () => productsApi.list({ per_page: 200 }),
+    placeholderData: (prev) => prev,
+  })
+
+  const departments = useQuery({
+    queryKey: ['departments', 'for-sale-filter'],
+    queryFn: () => departmentsApi.list(),
     placeholderData: (prev) => prev,
   })
 
@@ -263,11 +273,12 @@ export function SalesHistoryPage() {
     setRepId('all')
     setMethod('all')
     setProductId('all')
+    setDepartmentId('all')
     setStatus('all')
   }
 
   const hasFilters =
-    search || from || to || repId !== 'all' || method !== 'all' || productId !== 'all' || status !== 'all'
+    search || from || to || repId !== 'all' || method !== 'all' || productId !== 'all' || departmentId !== 'all' || status !== 'all'
 
   const contextLabel = [
     activeShift ? `Shift #${activeShift.id}` : 'No open shift',
@@ -430,7 +441,7 @@ export function SalesHistoryPage() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             <Select
               value={productId}
               onValueChange={(value) => {
@@ -446,6 +457,29 @@ export function SalesHistoryPage() {
                 {(products.data?.data ?? []).map((product) => (
                   <SelectItem key={product.id} value={String(product.id)}>
                     {product.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={departmentId}
+              onValueChange={(value) => {
+                setPage(1)
+                setDepartmentId(value)
+              }}
+            >
+              <SelectTrigger>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="All departments" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All departments</SelectItem>
+                {(departments.data?.data ?? []).map((department) => (
+                  <SelectItem key={department.id} value={String(department.id)}>
+                    {department.name}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -43,10 +43,50 @@ export interface StockMovement {
   type: 'in' | 'out' | 'adjustment' | 'transfer_in' | 'transfer_out' | 'damage' | 'expired'
   quantity: number
   direction?: 'in' | 'out'
+  status?: AdjustmentStatus
+  balance_before?: number | null
+  balance_after?: number | null
   reason?: string | null
   reference?: string | null
   staff_name?: string | null
   happened_at: string
+}
+
+export type AdjustmentStatus = 'pending' | 'approved' | 'rejected'
+
+export interface StockAdjustmentTrail {
+  id: number
+  reference: string
+  product_id: number
+  product_name: string | null
+  variant_id?: number | null
+  variant_name?: string | null
+  sku?: string | null
+  branch_id: number
+  branch_name?: string | null
+  quantity: number
+  balance_before?: number | null
+  balance_after?: number | null
+  reason?: string | null
+  decision_notes?: string | null
+  status: AdjustmentStatus
+  created_by?: number | null
+  created_by_name?: string | null
+  decided_by?: number | null
+  decided_by_name?: string | null
+  created_at: string
+  decided_at?: string | null
+}
+
+export interface AdjustmentTrailSummary {
+  pending: number
+  approved: number
+  rejected: number
+  applied_quantity: number
+}
+
+export interface AdjustmentTrailPage extends Paginated<StockAdjustmentTrail> {
+  meta: PaginationMeta & { summary: AdjustmentTrailSummary }
 }
 
 export interface StockAdjustmentInput {
@@ -221,11 +261,22 @@ export const inventoryApi = {
     bucket?: ExpiryRiskBucket
   }) => http.get<ExpiryBatchesResponse>('/inventory/batches', { params }),
 
-  approvals: (params?: { page?: number; per_page?: number; status?: string }) =>
-    http.get<Paginated<unknown>>('/inventory/approvals', { params }),
+  adjustments: (params?: {
+    page?: number
+    per_page?: number
+    status?: string
+    branch_id?: number
+    product_id?: number
+    search?: string
+    date_from?: string
+    date_to?: string
+  }) => http.get<AdjustmentTrailPage>('/inventory/adjustments', { params }),
+
+  approvals: (params?: { page?: number; per_page?: number; status?: string; branch_id?: number }) =>
+    http.get<Paginated<StockAdjustmentTrail>>('/inventory/approvals', { params }),
 
   approve: (id: number, decision: 'approved' | 'rejected', notes?: string) =>
-    http.post<ApiEnvelope<unknown>>(`/inventory/approvals/${id}`, {
+    http.post<ApiEnvelope<StockAdjustmentTrail>>(`/inventory/approvals/${id}`, {
       decision,
       notes,
     }),

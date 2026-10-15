@@ -100,6 +100,7 @@ export interface SaleListParams {
   from?: string
   to?: string
   search?: string
+  department_id?: number
 }
 
 export interface SaleTender {
