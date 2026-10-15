@@ -17,6 +17,7 @@ import {
   type Shift,
 } from '@/lib/api/endpoints/shifts'
 import { staffApi } from '@/lib/api/endpoints/staff'
+import { ShiftHistoryPage } from './shift-history-page'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/lib/use-permissions'
@@ -61,6 +62,11 @@ export function ShiftsPage() {
   const { can } = usePermissions()
   const canManage = can('shifts.operate')
   const canSell = can('sales.session')
+  const canView = can('shifts.view')
+
+  if (!canManage && !canSell && canView) {
+    return <ShiftHistoryPage />
+  }
 
   return (
     <div className="animate-fade-in">
