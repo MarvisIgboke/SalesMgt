@@ -27,11 +27,17 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
-import { posApi, type PaymentMethod, type SaleResult } from '@/lib/api/endpoints/pos'
+import { posApi, type PaymentMethod, type Receipt, type SaleResult } from '@/lib/api/endpoints/pos'
 import { ApiError } from '@/lib/api/errors'
 import { toast } from '@/components/ui/sonner'
 import { usePosCart } from './use-pos-cart'
 import { usePosStore } from './pos-store'
+import {
+  thermalPrint,
+  downloadReceiptPdf,
+  whatsappShare,
+  nativeShare,
+} from './receipt-actions'
 
 const methods: Array<{
   value: PaymentMethod
@@ -90,6 +96,32 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
   // Receipt view after a completed/awaiting sale.
   if (result) {
     const receipt = result.sale?.receipt
+
+    const requireReceipt = (action: (r: Receipt) => void) => () => {
+      if (!receipt) {
+        toast.error('Receipt is not available yet for this sale.')
+        return
+      }
+      action(receipt)
+    }
+
+    const handlePrint = requireReceipt((r) => {
+      if (!thermalPrint(r)) toast.error('Allow pop-ups to print the receipt.')
+    })
+
+    const handlePdf = requireReceipt((r) => {
+      downloadReceiptPdf(r)
+      toast.success('Receipt PDF downloaded.')
+    })
+
+    const handleShare = requireReceipt((r) => {
+      void (async () => {
+        const outcome = await nativeShare(r)
+        if (outcome === 'copied') toast.success('Receipt details copied to clipboard.')
+        else if (outcome === 'shared') toast.success('Receipt shared.')
+      })()
+    })
+
     return (
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -237,10 +269,10 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
           )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <ReceiptAction icon={Printer} label="Thermal print" onClick={() => toast.info('Thermal print configured here.')} />
-            <ReceiptAction icon={FileText} label="PDF" onClick={() => toast.info('PDF export via backend endpoint.')} />
-            <ReceiptAction icon={MessageCircle} label="WhatsApp" onClick={() => toast.info('Share via WhatsApp where configured.')} />
-            <ReceiptAction icon={Share2} label="Share" onClick={() => toast.info('Share options configured by admin.')} />
+            <ReceiptAction icon={Printer} label="Thermal print" onClick={handlePrint} />
+            <ReceiptAction icon={FileText} label="PDF" onClick={handlePdf} />
+            <ReceiptAction icon={MessageCircle} label="WhatsApp" onClick={requireReceipt(whatsappShare)} />
+            <ReceiptAction icon={Share2} label="Share" onClick={handleShare} />
           </div>
 
           <Button className="w-full" onClick={() => { clearCart(); handleClose() }}>

@@ -97,6 +97,51 @@
     --ring: 258 80% 58%;
   }
 
+  /* Emerald ink (#064E3B) on champagne (#F8E7C9) */
+  .emerald {
+    color-scheme: light;
+    --background: 38 77% 88%;
+    --foreground: 164 86% 16%;
+
+    --surface: 38 60% 92%;
+    --surface-elevated: 40 62% 96%;
+    --surface-sunken: 38 45% 84%;
+
+    --card: 40 60% 96%;
+    --card-foreground: 164 86% 16%;
+
+    --popover: 40 60% 97%;
+    --popover-foreground: 164 86% 16%;
+
+    --primary: 164 86% 16%;
+    --primary-foreground: 38 77% 92%;
+
+    --secondary: 40 40% 89%;
+    --secondary-foreground: 164 86% 16%;
+
+    --muted: 40 40% 89%;
+    --muted-foreground: 164 25% 34%;
+
+    --accent: 164 30% 86%;
+    --accent-foreground: 164 86% 16%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 66% 30%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 45%;
+    --warning-foreground: 30 40% 10%;
+
+    --info: 199 89% 40%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 164 22% 76%;
+    --input: 164 22% 80%;
+    --ring: 164 86% 16%;
+  }
+
   * {
     @apply border-border;
   }

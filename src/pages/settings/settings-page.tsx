@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Moon, Monitor, Sun, BellRing, ShieldCheck, ImageOff } from 'lucide-react'
+import { Moon, Monitor, Sun, BellRing, ShieldCheck, ImageOff, Gem } from 'lucide-react'
 import { useAppStore, type Theme } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { PageHeader } from '@/components/common/page-header'
@@ -12,10 +12,11 @@ import { cn, initials } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import type { LucideIcon } from 'lucide-react'
 
-const themeOptions: Array<{ value: Theme; label: string; icon: LucideIcon }> = [
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'system', label: 'System', icon: Monitor },
+const themeOptions: Array<{ value: Theme; label: string; description: string; icon: LucideIcon }> = [
+  { value: 'dark', label: 'Dark', description: 'Midnight', icon: Moon },
+  { value: 'light', label: 'Light', description: 'Daylight', icon: Sun },
+  { value: 'emerald', label: 'Emerald', description: 'Ink & champagne', icon: Gem },
+  { value: 'system', label: 'System', description: 'Match device', icon: Monitor },
 ]
 
 export function SettingsPage() {
@@ -43,7 +44,7 @@ export function SettingsPage() {
           <CardDescription>Premium dark theme is the default experience.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {themeOptions.map((option) => {
               const Icon = option.icon
               const active = theme === option.value
@@ -56,7 +57,7 @@ export function SettingsPage() {
                     toast.success(`Theme set to ${option.label}.`)
                   }}
                   className={cn(
-                    'flex flex-col items-center gap-2 rounded-xl border p-4 text-sm font-medium transition-all',
+                    'flex flex-col items-center gap-1.5 rounded-xl border p-4 text-sm font-medium transition-all',
                     active
                       ? 'border-primary/60 bg-primary/10 text-primary'
                       : 'border-border/70 text-muted-foreground hover:bg-accent',
@@ -64,6 +65,9 @@ export function SettingsPage() {
                 >
                   <Icon className="h-5 w-5" />
                   {option.label}
+                  <span className="text-[10px] font-normal uppercase tracking-wider text-muted-foreground/70">
+                    {option.description}
+                  </span>
                 </button>
               )
             })}

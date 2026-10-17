@@ -108,9 +108,11 @@ function ManagerView() {
   const [historyPage, setHistoryPage] = useState(1)
   const [historyStatus, setHistoryStatus] = useState<string>('all')
 
-  const current = useQuery({
-    queryKey: ['shifts', 'current', branchId],
-    queryFn: () => shiftApi.current(branchId),
+  // The store shift is opened once at a branch and shared by every operator, so
+  // the active shift is looked up per branch rather than per user.
+  const openShifts = useQuery({
+    queryKey: ['shifts', 'open', branchId],
+    queryFn: () => shiftApi.history({ status: 'open', branch_id: branchId, per_page: 100 }),
     refetchInterval: 30_000,
     placeholderData: (prev) => prev,
   })
@@ -196,7 +198,9 @@ function ManagerView() {
     },
   })
 
-  const currentShift = current.data?.data ?? null
+  const currentShift =
+    (openShifts.data?.data ?? []).find((item) => (branchId ? item.branch_id === branchId : true)) ??
+    null
 
   const toggleRep = (id: number) =>
     setAssigned((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -210,10 +214,12 @@ function ManagerView() {
       </TabsList>
 
       <TabsContent value="active" className="space-y-4">
-        {current.isLoading && <LoadingState rows={2} />}
-        {current.isError && <ErrorState error={current.error} onRetry={() => current.refetch()} />}
+        {openShifts.isLoading && <LoadingState rows={2} />}
+        {openShifts.isError && (
+          <ErrorState error={openShifts.error} onRetry={() => openShifts.refetch()} />
+        )}
 
-        {!current.isLoading && !current.isError && !currentShift && (
+        {!openShifts.isLoading && !openShifts.isError && !currentShift && (
           <EmptyState
             title="No active shift"
             description={
@@ -548,8 +554,8 @@ function RepView() {
   const [closeNotes, setCloseNotes] = useState('')
 
   const shiftQuery = useQuery({
-    queryKey: ['shifts', 'current', branchId],
-    queryFn: () => shiftApi.current(branchId),
+    queryKey: ['shifts', 'open', branchId],
+    queryFn: () => shiftApi.history({ status: 'open', branch_id: branchId, per_page: 100 }),
     refetchInterval: 20_000,
     placeholderData: (prev) => prev,
   })
@@ -594,7 +600,9 @@ function RepView() {
     },
   })
 
-  const shift = shiftQuery.data?.data ?? null
+  const shift =
+    (shiftQuery.data?.data ?? []).find((item) => (branchId ? item.branch_id === branchId : true)) ??
+    null
   const session = sessionQuery.data?.data ?? null
   const isAssigned = shift ? shift.assigned_user_ids?.includes(userId ?? -1) : false
 

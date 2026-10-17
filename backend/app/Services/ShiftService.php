@@ -28,30 +28,34 @@ class ShiftService
     {
     }
 
+    /**
+     * Shift policies are business-wide ("saved per business"), so they are always
+     * read from the business scope (branch_id = null). Reading them per branch let a
+     * stale branch-level row silently disable the shift requirement.
+     */
     public function config(): array
     {
         return [
-            'shifts_enabled' => BusinessSetting::bool(self::SETTING_ENABLED, true, TenantContext::branchId()),
-            'require_cash_reconciliation' => BusinessSetting::bool(self::SETTING_REQUIRE_RECONCILIATION, true, TenantContext::branchId()),
-            'require_sale_session' => BusinessSetting::bool(self::SETTING_REQUIRE_SALE_SESSION, true, TenantContext::branchId()),
+            'shifts_enabled' => BusinessSetting::bool(self::SETTING_ENABLED, true, null),
+            'require_cash_reconciliation' => BusinessSetting::bool(self::SETTING_REQUIRE_RECONCILIATION, true, null),
+            'require_sale_session' => BusinessSetting::bool(self::SETTING_REQUIRE_SALE_SESSION, true, null),
         ];
     }
 
     public function setConfig(bool $shiftsEnabled = null, bool $requireReconciliation = null, bool $requireSaleSession = null): array
     {
         $businessId = TenantContext::businessId();
-        $branchId = TenantContext::branchId();
 
         if ($shiftsEnabled !== null) {
-            $this->store($businessId, $branchId, self::SETTING_ENABLED, $shiftsEnabled);
+            $this->store($businessId, null, self::SETTING_ENABLED, $shiftsEnabled);
         }
 
         if ($requireReconciliation !== null) {
-            $this->store($businessId, $branchId, self::SETTING_REQUIRE_RECONCILIATION, $requireReconciliation);
+            $this->store($businessId, null, self::SETTING_REQUIRE_RECONCILIATION, $requireReconciliation);
         }
 
         if ($requireSaleSession !== null) {
-            $this->store($businessId, $branchId, self::SETTING_REQUIRE_SALE_SESSION, $requireSaleSession);
+            $this->store($businessId, null, self::SETTING_REQUIRE_SALE_SESSION, $requireSaleSession);
         }
 
         return $this->config();
@@ -59,7 +63,7 @@ class ShiftService
 
     public function enabled(?int $branchId = null): bool
     {
-        return BusinessSetting::bool(self::SETTING_ENABLED, true, $branchId ?? TenantContext::branchId());
+        return BusinessSetting::bool(self::SETTING_ENABLED, true, null);
     }
 
     /**

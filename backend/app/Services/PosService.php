@@ -498,12 +498,13 @@ class PosService
 
         $branchId = $cart->branch_id === null ? null : (int) $cart->branch_id;
 
-        // A POS sale may only be taken while a shift is open at the branch. When a
-        // business has turned shifts off entirely, no shift is required.
-        $shiftsEnabled = BusinessSetting::bool(ShiftService::SETTING_ENABLED, true, $branchId);
+        // A POS sale may only be taken while a shift is open at the branch. Shift
+        // policy is business-wide, so it is read at the business scope; a missing
+        // branch still must not skip the requirement.
+        $shiftsEnabled = BusinessSetting::bool(ShiftService::SETTING_ENABLED, true, null);
         $shift = $this->shifts->currentForBranch($branchId);
 
-        if ($shiftsEnabled && $branchId !== null && $shift === null) {
+        if ($shiftsEnabled && $shift === null) {
             throw new ApiException('NO_OPEN_SHIFT', 'Open a shift before taking payments.', 422);
         }
 
@@ -513,7 +514,7 @@ class PosService
         $session = $branchId === null ? null : $this->saleSessions->currentForUser($user->id, $branchId);
         $requireSession = $shift !== null
             && ! $user->can('shifts.operate')
-            && BusinessSetting::bool(ShiftService::SETTING_REQUIRE_SALE_SESSION, true, $branchId);
+            && BusinessSetting::bool(ShiftService::SETTING_REQUIRE_SALE_SESSION, true, null);
 
         if ($requireSession && $session === null) {
             throw new ApiException('NO_SALE_OPEN', 'Open a sale before taking a payment.', 422);

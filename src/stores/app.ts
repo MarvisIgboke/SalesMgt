@@ -3,7 +3,7 @@ import { businessApi, type ActiveContext, type Branch } from '@/lib/api/endpoint
 import { setRequestContext } from '@/lib/api/context'
 import type { AuthSession } from '@/lib/api/endpoints/auth'
 
-export type Theme = 'dark' | 'light' | 'system'
+export type Theme = 'dark' | 'light' | 'emerald' | 'system'
 
 interface AppState {
   theme: Theme
@@ -25,19 +25,23 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement
   const resolved =
     theme === 'system'
-      ? window.matchMedia('(prefers-color-scheme: light)').matches
-        ? 'light'
-        : 'dark'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
       : theme
-  root.classList.toggle('light', resolved === 'light')
-  root.classList.toggle('dark', resolved === 'dark')
+
+  root.classList.remove('light', 'dark', 'emerald')
+  root.classList.add(resolved)
+
   try {
     localStorage.setItem('salesmgt.theme', theme)
   } catch {
     /* ignore */
   }
+
   const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.setAttribute('content', resolved === 'light' ? '#ffffff' : '#0a0a0b')
+  const themeColor = resolved === 'dark' ? '#0a0a0b' : resolved === 'emerald' ? '#064E3B' : '#ffffff'
+  if (meta) meta.setAttribute('content', themeColor)
 }
 
 function initialTheme(): Theme {
