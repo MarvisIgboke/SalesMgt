@@ -1,4 +1,4 @@
-﻿import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -210,7 +210,7 @@ export function ExpiryPage() {
           <Input
             defaultValue={search}
             onChange={(event) => searchDebounced.current(event.target.value)}
-            placeholder="Search product, SKU or barcodeâ€¦"
+            placeholder="Search product, SKU or barcode…"
             className="h-11 rounded-xl pl-10 pr-16"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
@@ -311,12 +311,12 @@ function TelemetryBar({
       <div className="flex min-w-0 items-center gap-2">
         <span className="h-2 w-2 shrink-0 animate-ping rounded-full bg-primary" />
         <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">
-          Expiry Risk Engine â€¢ Automated Triage
+          Expiry Risk Engine • Automated Triage
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
-          Sweep {updatedAt ? formatRelative(new Date(updatedAt)) : 'â€”'}
+          Sweep {updatedAt ? formatRelative(new Date(updatedAt)) : '—'}
         </span>
         <Button variant="ghost" size="icon-sm" aria-label="Re-sweep" onClick={onSync} disabled={syncing}>
           <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
@@ -337,11 +337,11 @@ function MetricGrid({
 }) {
   const cards: { bucket: ExpiryRiskBucket; note: string }[] = [
     { bucket: 'critical', note: 'within 7 days' },
-    { bucket: 'near', note: '8â€“30 days' },
-    { bucket: 'at_risk', note: '31â€“90 days' },
+    { bucket: 'near', note: '8–30 days' },
+    { bucket: 'at_risk', note: '31–90 days' },
     { bucket: 'expired', note: 'past expiry' },
   ]
-  const dim = loading ? 'â€”' : errored ? 'n/a' : undefined
+  const dim = loading ? '—' : errored ? 'n/a' : undefined
 
   return (
     <div className="grid grid-cols-2 gap-2.5">
@@ -394,7 +394,7 @@ function PolicyBanner() {
           </button>
         </div>
         <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-          Rule: &lt;90d monitor â†’ &lt;30d priority FEFO â†’ &lt;7d urgent dispatch â†’ expired quarantine &amp; write-off.
+          Rule: &lt;90d monitor → &lt;30d priority FEFO → &lt;7d urgent dispatch → expired quarantine &amp; write-off.
         </p>
       </div>
     </div>
@@ -526,14 +526,14 @@ function BatchCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className={cn('flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider', meta.chip)}>
-              {bucketIcon(row.bucket, 'h-3 w-3')} {expired ? `Expired ${formatDate(row.expiry_date)}` : `${meta.short} â€¢ ${daysLabel(row)}`}
+              {bucketIcon(row.bucket, 'h-3 w-3')} {expired ? `Expired ${formatDate(row.expiry_date)}` : `${meta.short} • ${daysLabel(row)}`}
             </span>
             {row.branch_name && <span className="font-mono text-[10px] text-muted-foreground">{row.branch_name}</span>}
           </div>
           <h3 className="mt-1 truncate text-sm font-semibold text-foreground">{row.product_name}</h3>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
-            SKU: {row.sku || 'â€”'} â€¢ Lot: {row.batch_number ?? 'â€”'}
-            {row.barcode ? ` â€¢ EAN: ${row.barcode}` : ''}
+            SKU: {row.sku || '—'} • Lot: {row.batch_number ?? '—'}
+            {row.barcode ? ` • EAN: ${row.barcode}` : ''}
           </p>
         </div>
         <div className="relative shrink-0">
@@ -573,7 +573,7 @@ function BatchCard({
           {row.supplier_name ?? 'No supplier on file'}
         </span>
         <span className="shrink-0 text-muted-foreground">
-          Exp {row.expiry_date ? formatDate(row.expiry_date) : 'â€”'} â€¢ {daysLabel(row)}
+          Exp {row.expiry_date ? formatDate(row.expiry_date) : '—'} • {daysLabel(row)}
         </span>
       </div>
 
