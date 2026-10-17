@@ -195,12 +195,43 @@ export function whatsappShare(receipt: Receipt): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-export async function nativeShare(receipt: Receipt): Promise<'shared' | 'copied' | 'cancelled'> {
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    /* fall through to the legacy path */
+  }
+  try {
+    const area = document.createElement('textarea')
+    area.value = text
+    area.setAttribute('readonly', '')
+    area.style.position = 'fixed'
+    area.style.top = '-1000px'
+    area.style.left = '-1000px'
+    area.style.opacity = '0'
+    document.body.appendChild(area)
+    area.focus()
+    area.select()
+    area.setSelectionRange(0, text.length)
+    const ok = document.execCommand('copy')
+    area.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
+
+export async function nativeShare(
+  receipt: Receipt,
+): Promise<'shared' | 'copied' | 'failed' | 'cancelled'> {
   const shareData = {
     title: 'Receipt ' + receipt.receipt_number,
     text: toShareText(receipt),
   }
-  if (navigator.share) {
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     try {
       await navigator.share(shareData)
       return 'shared'
@@ -208,10 +239,5 @@ export async function nativeShare(receipt: Receipt): Promise<'shared' | 'copied'
       if (err instanceof Error && err.name === 'AbortError') return 'cancelled'
     }
   }
-  try {
-    await navigator.clipboard.writeText(shareData.text)
-    return 'copied'
-  } catch {
-    return 'cancelled'
-  }
+  return (await copyToClipboard(shareData.text)) ? 'copied' : 'failed'
 }

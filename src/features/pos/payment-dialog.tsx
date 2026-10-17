@@ -119,6 +119,7 @@ export function PaymentDialog({ open, onOpenChange }: PaymentDialogProps) {
         const outcome = await nativeShare(r)
         if (outcome === 'copied') toast.success('Receipt details copied to clipboard.')
         else if (outcome === 'shared') toast.success('Receipt shared.')
+        else if (outcome === 'failed') toast.error('Could not share the receipt on this device.')
       })()
     })
 
