@@ -81,6 +81,7 @@ class ProductController extends Controller
             'cost_price' => $data['cost_price'] ?? 0,
             'selling_price' => $data['selling_price'] ?? 0,
             'tax_rate' => $data['tax_rate'] ?? 0,
+            'low_stock_threshold' => $data['low_stock_threshold'] ?? null,
             'requires_expiry' => (bool) ($data['requires_expiry'] ?? false),
             'expiry_date' => $data['expiry_date'] ?? null,
             'is_active' => (bool) ($data['is_active'] ?? true),
@@ -106,6 +107,7 @@ class ProductController extends Controller
             'cost_price' => $data['cost_price'] ?? $product->cost_price,
             'selling_price' => $data['selling_price'] ?? $product->selling_price,
             'tax_rate' => $data['tax_rate'] ?? $product->tax_rate,
+            'low_stock_threshold' => array_key_exists('low_stock_threshold', $data) ? $data['low_stock_threshold'] : $product->low_stock_threshold,
             'requires_expiry' => $data['requires_expiry'] ?? $product->requires_expiry,
             'expiry_date' => array_key_exists('expiry_date', $data) ? $data['expiry_date'] : $product->expiry_date,
             'is_active' => $data['is_active'] ?? $product->is_active,
@@ -132,6 +134,12 @@ class ProductController extends Controller
         }
 
         $product->save();
+
+        if (array_key_exists('low_stock_threshold', $data)) {
+            InventoryBalance::query()
+                ->where('product_id', $product->id)
+                ->update(['low_stock_threshold' => $data['low_stock_threshold']]);
+        }
 
         if (array_key_exists('barcodes', $data)) {
             $this->syncBarcodes($product, $data['barcodes'] ?? []);
@@ -270,6 +278,7 @@ class ProductController extends Controller
             'cost_price' => ['nullable', 'numeric', 'min:0'],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'low_stock_threshold' => ['nullable', 'numeric', 'min:0'],
             'requires_expiry' => ['nullable', 'boolean'],
             'expiry_date' => ['nullable', 'date'],
             'is_active' => ['nullable', 'boolean'],

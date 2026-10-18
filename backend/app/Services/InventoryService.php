@@ -3,12 +3,15 @@
 namespace App\Services;
 
 use App\Exceptions\ApiException;
+use App\Models\BusinessSetting;
 use App\Models\InventoryBalance;
 use App\Models\InventoryTransaction;
+use App\Models\Notification;
 use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\StockBatch;
 use App\Models\StockTransfer;
+use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +23,86 @@ class InventoryService
         $product = Product::query()->select('id', 'low_stock_threshold')->find($productId);
 
         return $product?->low_stock_threshold === null ? null : (float) $product->low_stock_threshold;
+    }
+
+    /**
+     * Emit per-product low-stock notifications when a balance crosses below its
+     * own threshold (only on the downward crossing, so alerts are not repeated).
+     */
+    private function notifyLowStock(InventoryBalance $balance, float $previousQuantity): void
+    {
+        $product = Product::query()
+            ->select('id', 'name', 'business_id', 'low_stock_threshold')
+            ->find($balance->product_id);
+
+        if ($product === null || $product->low_stock_threshold === null) {
+            return;
+        }
+
+        $threshold = (float) $product->low_stock_threshold;
+        $quantity = round((float) $balance->quantity, 3);
+
+        if ($quantity > $threshold || $previousQuantity <= $threshold) {
+            return;
+        }
+
+        if (! $this->lowStockAlertsEnabled()) {
+            return;
+        }
+
+        $branchId = (int) $balance->branch_id;
+        $businessId = TenantContext::businessId() ?? ($product->business_id === null ? null : (int) $product->business_id);
+
+        if ($businessId === null) {
+            return;
+        }
+
+        $recipients = User::query()
+            ->where('business_id', $businessId)
+            ->where('is_active', true)
+            ->permission(['inventory.view', 'products.view'])
+            ->get();
+
+        foreach ($recipients as $recipient) {
+            if (! $recipient->hasBranchAccess($branchId)) {
+                continue;
+            }
+
+            Notification::notify(
+                $recipient->id,
+                'inventory.low_stock',
+                'Low stock alert',
+                sprintf(
+                    '%s is low on stock: %s remaining (reorder at %s).',
+                    $product->name,
+                    $this->formatQuantity($quantity),
+                    $this->formatQuantity($threshold),
+                ),
+                [
+                    'product_id' => (int) $product->id,
+                    'branch_id' => $branchId,
+                    'quantity' => $quantity,
+                    'threshold' => $threshold,
+                ],
+                $branchId,
+            );
+        }
+    }
+
+    private function lowStockAlertsEnabled(): bool
+    {
+        $preferences = BusinessSetting::value('preferences');
+
+        if (! is_array($preferences) || ! array_key_exists('low_stock_alerts', $preferences)) {
+            return true;
+        }
+
+        return (bool) $preferences['low_stock_alerts'];
+    }
+
+    private function formatQuantity(float $value): string
+    {
+        return rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.');
     }
 
     public function balance(int $branchId, int $productId, ?int $variantId, bool $lock = false): InventoryBalance
@@ -113,10 +196,11 @@ class InventoryService
                 throw new ApiException('insufficient_stock', 'Insufficient stock for this operation.', 422);
             }
 
+            $previousQuantity = round((float) $balance->quantity, 3);
             $balance->quantity = round((float) $balance->quantity + $quantity, 3);
             $balance->save();
 
-            return InventoryTransaction::create([
+            $transaction = InventoryTransaction::create([
                 'business_id' => TenantContext::businessId(),
                 'branch_id' => $branchId,
                 'product_id' => $productId,
@@ -129,6 +213,10 @@ class InventoryService
                 'happened_at' => now(),
                 'created_by' => $userId,
             ]);
+
+            $this->notifyLowStock($balance, $previousQuantity);
+
+            return $transaction;
         });
     }
 

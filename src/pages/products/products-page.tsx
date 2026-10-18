@@ -95,6 +95,7 @@ interface ProductFormState {
   cost_price: string
   selling_price: string
   tax_rate: string
+  low_stock_threshold: string
   requires_expiry: boolean
   expiry_date: string
   is_active: boolean
@@ -111,6 +112,7 @@ const EMPTY_FORM: ProductFormState = {
   cost_price: '',
   selling_price: '',
   tax_rate: '',
+  low_stock_threshold: '',
   requires_expiry: false,
   expiry_date: '',
   is_active: true,
@@ -128,6 +130,8 @@ function toForm(product: Product): ProductFormState {
     cost_price: product.cost_price ? String(product.cost_price) : '',
     selling_price: product.selling_price ? String(product.selling_price) : '',
     tax_rate: product.tax_rate != null ? String(product.tax_rate) : '',
+    low_stock_threshold:
+      product.low_stock_threshold != null ? String(product.low_stock_threshold) : '',
     requires_expiry: product.requires_expiry,
     expiry_date: product.expiry_date ? product.expiry_date.slice(0, 10) : '',
     is_active: product.is_active,
@@ -1159,6 +1163,8 @@ function ProductEditorDialog({
       cost_price: form.cost_price ? Number(form.cost_price) : undefined,
       selling_price: form.selling_price ? Number(form.selling_price) : undefined,
       tax_rate: form.tax_rate ? Number(form.tax_rate) : null,
+      low_stock_threshold:
+        form.low_stock_threshold !== '' ? Number(form.low_stock_threshold) : null,
       requires_expiry: form.requires_expiry,
       expiry_date: form.expiry_date || null,
       is_active: form.is_active,
@@ -1312,6 +1318,23 @@ function ProductEditorDialog({
                 placeholder="e.g. 7.5"
               />
             </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="product-low-stock">Low stock threshold</Label>
+            <Input
+              id="product-low-stock"
+              type="number"
+              min={0}
+              step="1"
+              value={form.low_stock_threshold}
+              onChange={(e) => set({ low_stock_threshold: e.target.value })}
+              placeholder="e.g. 5"
+            />
+            <p className="text-xs text-muted-foreground">
+              Alert when stock on hand reaches this level. Each product keeps its own threshold —
+              leave blank to disable low stock alerts for this product.
+            </p>
           </div>
 
           <div className="space-y-3">

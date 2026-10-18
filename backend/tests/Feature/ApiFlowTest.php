@@ -251,6 +251,51 @@ class ApiFlowTest extends TestCase
             ->assertJsonFragment(['action' => 'sale.created']);
     }
 
+    public function test_product_low_stock_threshold_is_persisted_and_synced_to_balances(): void
+    {
+        [$admin, $branch, $product] = $this->scene('WTR-75');
+        $this->ensureStock($product, $branch, 20);
+
+        $response = $this->putJson("/api/v1/products/{$product->id}", [
+            'low_stock_threshold' => 7,
+        ])->assertOk();
+
+        $this->assertEquals(7, $response->json('data.low_stock_threshold'));
+        $this->assertSame(7.0, (float) $product->fresh()->low_stock_threshold);
+        $this->assertSame(
+            7.0,
+            (float) InventoryBalance::query()
+                ->where('product_id', $product->id)
+                ->value('low_stock_threshold'),
+        );
+    }
+
+    public function test_low_stock_notification_is_emitted_when_stock_crosses_threshold(): void
+    {
+        [$admin, $branch, $product] = $this->scene('WTR-75');
+        $product->update(['low_stock_threshold' => 5]);
+        $this->ensureStock($product, $branch, 10);
+
+        $cart = $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 6,
+        ])->assertOk();
+
+        $this->postJson('/api/v1/pos/sales/charge', [
+            'reference' => $cart->json('data.reference'),
+            'method' => 'cash',
+            'cash_received' => 5000,
+        ])->assertOk();
+
+        $this->assertSame(4.0, $this->balanceFor($product, $branch));
+
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $admin->id,
+            'type' => 'inventory.low_stock',
+            'branch_id' => $branch->id,
+        ]);
+    }
+
     /**
      * @return array{0: User, 1: Branch, 2: Product}
      */

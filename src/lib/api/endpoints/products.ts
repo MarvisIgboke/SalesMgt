@@ -50,6 +50,7 @@ export interface ProductInput {
   cost_price?: number
   selling_price?: number
   tax_rate?: number | null
+  low_stock_threshold?: number | null
   requires_expiry?: boolean
   expiry_date?: string | null
   is_active?: boolean

@@ -97,6 +97,7 @@ class Product extends Model
             'cost_price' => $this->cost_price,
             'selling_price' => $this->selling_price,
             'tax_rate' => $this->tax_rate,
+            'low_stock_threshold' => $this->low_stock_threshold === null ? null : (float) $this->low_stock_threshold,
             'requires_expiry' => $this->requires_expiry,
             'expiry_date' => $this->expiry_date?->toDateString(),
             'is_active' => $this->is_active,
