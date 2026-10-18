@@ -30,7 +30,7 @@ class SaleSessionController extends Controller
 
     public function open(Request $request)
     {
-        abort_unless($request->user()->can('sales.session'), 403);
+        abort_unless($request->user()->can('sales.session') || $request->user()->can('shifts.operate'), 403);
 
         $data = $request->validate([
             'shift_id' => ['nullable', 'integer'],

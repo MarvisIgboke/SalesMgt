@@ -146,6 +146,18 @@ export interface SaleResult {
   message?: string
 }
 
+export interface HeldSale {
+  reference: string
+  customer_id?: number | null
+  customer_name?: string | null
+  items_count: number
+  subtotal: number
+  total: number
+  held_until: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
 export const posApi = {
   searchProducts: (params: { q?: string; category?: string; page?: number; per_page?: number }) =>
     http.get<Paginated<SellableProduct>>('/pos/search', { params }),
@@ -198,4 +210,7 @@ export const posApi = {
 
   resumeSale: (reference: string) =>
     http.post<ApiEnvelope<CartResponse>>('/pos/sales/resume', { reference }),
+
+  getHeldSales: () =>
+    http.get<ApiEnvelope<{ carts: HeldSale[] }>>('/pos/sales/held'),
 }

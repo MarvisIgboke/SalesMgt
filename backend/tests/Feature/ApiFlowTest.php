@@ -308,7 +308,12 @@ class ApiFlowTest extends TestCase
         $this->actingAs($admin, 'sanctum')
             ->withHeaders(['Accept' => 'application/json', 'X-Branch-Id' => (string) $branch->id]);
 
-        $this->openShift($admin, $branch);
+        $shift = $this->openShift($admin, $branch);
+
+        $this->postJson('/api/v1/sale-sessions/open', [
+            'shift_id' => $shift->id,
+            'opening_balance' => 0,
+        ])->assertOk();
 
         return [$admin, $branch, $product];
     }

@@ -182,6 +182,15 @@ class PosController extends Controller
         ], 'Sale held.');
     }
 
+    public function held(Request $request)
+    {
+        $this->authorize($request, ['sales.create', 'sales.view']);
+
+        $carts = $this->pos->listHeld($request->user(), $this->branchId($request));
+
+        return ApiResponse::success(['carts' => $carts]);
+    }
+
     public function resume(Request $request)
     {
         $this->authorize($request, ['sales.create']);

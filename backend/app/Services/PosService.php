@@ -452,6 +452,38 @@ class PosService
         return $cart->fresh();
     }
 
+    public function listHeld(User $user, ?int $branchId): array
+    {
+        $query = PosCart::query()
+            ->where('user_id', $user->id)
+            ->where('state', 'held')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->orderByDesc('held_until')
+            ->orderByDesc('id');
+
+        return $query->get()
+            ->map(fn (PosCart $cart) => $this->presentHeld($cart))
+            ->toArray();
+    }
+
+    private function presentHeld(PosCart $cart): array
+    {
+        $items = $cart->items ?? [];
+        $customer = $cart->customer_id ? Customer::query()->find($cart->customer_id) : null;
+
+        return [
+            'reference' => $cart->reference,
+            'customer_id' => $cart->customer_id,
+            'customer_name' => $customer?->name,
+            'items_count' => count($items),
+            'subtotal' => (float) $cart->subtotal,
+            'total' => (float) $cart->total,
+            'held_until' => $cart->held_until?->toIso8601String(),
+            'created_at' => $cart->created_at?->toIso8601String(),
+            'updated_at' => $cart->updated_at?->toIso8601String(),
+        ];
+    }
+
     public function resume(PosCart $cart): PosCart
     {
         $cart->forceFill(['state' => 'active', 'held_until' => null])->save();
@@ -508,12 +540,11 @@ class PosService
             throw new ApiException('NO_OPEN_SHIFT', 'Open a shift before taking payments.', 422);
         }
 
-        // A Sales Representative must also operate inside an open sale, which itself
-        // requires an open shift. Users who can run the store shift transact without a
-        // personal sale.
+        // A sale must be open before a payment is taken. This applies to every
+        // operator, including store managers, so a POS sale always belongs to an
+        // open shift and an open sale.
         $session = $branchId === null ? null : $this->saleSessions->currentForUser($user->id, $branchId);
         $requireSession = $shift !== null
-            && ! $user->can('shifts.operate')
             && BusinessSetting::bool(ShiftService::SETTING_REQUIRE_SALE_SESSION, true, null);
 
         if ($requireSession && $session === null) {

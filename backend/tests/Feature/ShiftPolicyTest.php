@@ -179,6 +179,86 @@ class ShiftPolicyTest extends TestCase
         $this->assertSame(2, $response->json('data.kpis.sales_transactions'));
     }
 
+    public function test_store_manager_cannot_charge_without_an_open_sale(): void
+    {
+        [$branch, $product] = $this->boot();
+        $headers = ['Accept' => 'application/json', 'X-Branch-Id' => (string) $branch->id];
+
+        $manager = $this->storeManager($branch);
+
+        $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/shifts/open', [
+                'branch_id' => $branch->id,
+                'opening_cash' => 0,
+                'assigned_user_ids' => [],
+            ])->assertOk();
+
+        $reference = $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/pos/cart/items', [
+                'product_id' => $product->id,
+                'quantity' => 1,
+            ])->assertOk()->json('data.reference');
+
+        $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/pos/sales/charge', [
+                'reference' => $reference,
+                'method' => 'cash',
+                'cash_received' => 500,
+            ])->assertStatus(422)->assertJsonPath('code', 'NO_SALE_OPEN');
+
+        $this->assertSame(0, Sale::query()->count());
+    }
+
+    public function test_store_manager_can_open_their_own_sale_even_when_not_assigned(): void
+    {
+        [$branch, $product] = $this->boot();
+        $headers = ['Accept' => 'application/json', 'X-Branch-Id' => (string) $branch->id];
+
+        $manager = $this->storeManager($branch);
+
+        $shiftId = $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/shifts/open', [
+                'branch_id' => $branch->id,
+                'opening_cash' => 0,
+                'assigned_user_ids' => [],
+            ])->assertOk()->json('data.id');
+
+        $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/sale-sessions/open', [
+                'shift_id' => $shiftId,
+                'opening_balance' => 0,
+            ])->assertOk();
+
+        $reference = $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/pos/cart/items', [
+                'product_id' => $product->id,
+                'quantity' => 1,
+            ])->assertOk()->json('data.reference');
+
+        $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/pos/sales/charge', [
+                'reference' => $reference,
+                'method' => 'cash',
+                'cash_received' => 500,
+            ])->assertOk()->assertJsonPath('data.status', 'completed');
+
+        $this->assertSame(1, Sale::query()->count());
+    }
+
+    private function storeManager(Branch $branch): User
+    {
+        $manager = User::create([
+            'name' => 'Store Manager',
+            'email' => 'manager@demo.local',
+            'password' => 'password',
+            'business_id' => $branch->business_id,
+            'is_active' => true,
+        ]);
+        $manager->assignRole('Store Manager');
+
+        return $manager;
+    }
+
     private function sellOnSale(User $rep, array $headers, Product $product, int $quantity): void
     {
         $this->actingAs($rep, 'sanctum')->withHeaders($headers)

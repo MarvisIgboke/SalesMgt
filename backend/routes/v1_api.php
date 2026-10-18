@@ -193,8 +193,9 @@ Route::put('/pos/cart/items/{line}', [PosController::class, 'updateItem'])->wher
 Route::delete('/pos/cart/items/{line}', [PosController::class, 'removeItem'])->whereNumber('line');
 Route::post('/pos/sales/initialize', [PosController::class, 'initialize']);
 Route::post('/pos/sales/charge', [PosController::class, 'charge'])->middleware('idempotent');
-Route::post('/pos/sales/hold', [PosController::class, 'hold']);
-Route::post('/pos/sales/resume', [PosController::class, 'resume']);
+    Route::post('/pos/sales/hold', [PosController::class, 'hold']);
+    Route::get('/pos/sales/held', [PosController::class, 'held']);
+    Route::post('/pos/sales/resume', [PosController::class, 'resume']);
 Route::get('/pos/receipts/{reference}', [PosController::class, 'receipt']);
 
 // Sales management & refunds.

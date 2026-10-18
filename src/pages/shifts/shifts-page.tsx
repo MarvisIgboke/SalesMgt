@@ -290,9 +290,11 @@ function ManagerView() {
                   Close shift
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
         )}
+
+        {currentShift && <MySalePanel shift={currentShift} />}
       </TabsContent>
 
       <TabsContent value="history" className="space-y-4">
@@ -546,16 +548,8 @@ function ManagerView() {
 /* -------------------------------------------------------------------------- */
 
 function RepView() {
-  const queryClient = useQueryClient()
   const branchId = useAppStore((s) => s.context?.branch?.id)
   const userId = useAuthStore((s) => s.session?.user.id)
-  const navigate = useNavigate()
-
-  const [openDialog, setOpenDialog] = useState(false)
-  const [closeDialog, setCloseDialog] = useState(false)
-  const [openingBalance, setOpeningBalance] = useState('0')
-  const [closingAmount, setClosingAmount] = useState('0')
-  const [closeNotes, setCloseNotes] = useState('')
 
   const shiftQuery = useQuery({
     queryKey: ['shifts', 'open', branchId],
@@ -564,50 +558,9 @@ function RepView() {
     placeholderData: (prev) => prev,
   })
 
-  const sessionQuery = useQuery({
-    queryKey: ['sale-sessions', 'current', userId, branchId],
-    queryFn: () => saleSessionApi.current({ branch_id: branchId }),
-    refetchInterval: 20_000,
-    placeholderData: (prev) => prev,
-  })
-
-  const openSale = useMutation({
-    mutationFn: (input: { shift_id?: number; opening_balance: number }) =>
-      saleSessionApi.open(input),
-    onSuccess: () => {
-      toast.success('Sale opened')
-      setOpenDialog(false)
-      setOpeningBalance('0')
-      void queryClient.invalidateQueries({ queryKey: ['sale-sessions'] })
-      void queryClient.invalidateQueries({ queryKey: ['shifts'] })
-    },
-    onError: (err) => {
-      toast.error('Could not open sale', {
-        description: err instanceof ApiError ? err.message : undefined,
-      })
-    },
-  })
-
-  const closeSale = useMutation({
-    mutationFn: (input: { id: number; closing_amount: number; notes?: string }) =>
-      saleSessionApi.close(input.id, { closing_amount: input.closing_amount, notes: input.notes }),
-    onSuccess: () => {
-      toast.success('Sale closed')
-      setCloseDialog(false)
-      void queryClient.invalidateQueries({ queryKey: ['sale-sessions'] })
-      void queryClient.invalidateQueries({ queryKey: ['shifts'] })
-    },
-    onError: (err) => {
-      toast.error('Could not close sale', {
-        description: err instanceof ApiError ? err.message : undefined,
-      })
-    },
-  })
-
   const shift =
     (shiftQuery.data?.data ?? []).find((item) => (branchId ? item.branch_id === branchId : true)) ??
     null
-  const session = sessionQuery.data?.data ?? null
   const isAssigned = shift ? shift.assigned_user_ids?.includes(userId ?? -1) : false
 
   return (
@@ -648,7 +601,71 @@ function RepView() {
         />
       )}
 
-      {shift && isAssigned && !session && (
+      {shift && isAssigned && <MySalePanel shift={shift} />}
+    </div>
+  )
+}
+
+/**
+ * The operator's own sale on the open shift. Used by sales reps and by store
+ * managers, who must also open a sale before they can take a POS payment.
+ */
+function MySalePanel({ shift }: { shift: Shift }) {
+  const queryClient = useQueryClient()
+  const branchId = useAppStore((s) => s.context?.branch?.id)
+  const navigate = useNavigate()
+
+  const [openDialog, setOpenDialog] = useState(false)
+  const [closeDialog, setCloseDialog] = useState(false)
+  const [openingBalance, setOpeningBalance] = useState('0')
+  const [closingAmount, setClosingAmount] = useState('0')
+  const [closeNotes, setCloseNotes] = useState('')
+
+  const sessionQuery = useQuery({
+    queryKey: ['sale-sessions', 'current', branchId],
+    queryFn: () => saleSessionApi.current({ branch_id: branchId }),
+    refetchInterval: 20_000,
+    placeholderData: (prev) => prev,
+  })
+
+  const session = sessionQuery.data?.data ?? null
+
+  const openSale = useMutation({
+    mutationFn: (input: { shift_id?: number; opening_balance: number }) =>
+      saleSessionApi.open(input),
+    onSuccess: () => {
+      toast.success('Sale opened')
+      setOpenDialog(false)
+      setOpeningBalance('0')
+      void queryClient.invalidateQueries({ queryKey: ['sale-sessions'] })
+      void queryClient.invalidateQueries({ queryKey: ['shifts'] })
+    },
+    onError: (err) => {
+      toast.error('Could not open sale', {
+        description: err instanceof ApiError ? err.message : undefined,
+      })
+    },
+  })
+
+  const closeSale = useMutation({
+    mutationFn: (input: { id: number; closing_amount: number; notes?: string }) =>
+      saleSessionApi.close(input.id, { closing_amount: input.closing_amount, notes: input.notes }),
+    onSuccess: () => {
+      toast.success('Sale closed')
+      setCloseDialog(false)
+      void queryClient.invalidateQueries({ queryKey: ['sale-sessions'] })
+      void queryClient.invalidateQueries({ queryKey: ['shifts'] })
+    },
+    onError: (err) => {
+      toast.error('Could not close sale', {
+        description: err instanceof ApiError ? err.message : undefined,
+      })
+    },
+  })
+
+  return (
+    <>
+      {!session && (
         <EmptyState
           title="No open sale"
           description="Open your sale to start taking payments for this shift."
@@ -746,7 +763,7 @@ function RepView() {
               loading={openSale.isPending}
               onClick={() =>
                 openSale.mutate({
-                  shift_id: shift?.id,
+                  shift_id: shift.id,
                   opening_balance: Number(openingBalance) || 0,
                 })
               }
@@ -811,7 +828,7 @@ function RepView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }
 

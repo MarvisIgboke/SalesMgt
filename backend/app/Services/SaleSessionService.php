@@ -58,7 +58,13 @@ class SaleSessionService
             throw new ApiException('NO_OPEN_SHIFT', 'A shift must be opened before a sale can be opened.', 422);
         }
 
-        if (! in_array($rep->id, $shift->assignedUserIds(), true)) {
+        // A sales rep must be assigned to the shift. A manager who runs the store
+        // shift (its opener, or anyone who can operate shifts) may open their own
+        // sale on it even though they are not listed as an assigned rep.
+        $isAssigned = in_array($rep->id, $shift->assignedUserIds(), true);
+        $canRunShift = (int) $shift->user_id === (int) $rep->id || $rep->can('shifts.operate');
+
+        if (! $isAssigned && ! $canRunShift) {
             throw new ApiException('NOT_ASSIGNED', 'You have not been assigned to this shift.', 403);
         }
 

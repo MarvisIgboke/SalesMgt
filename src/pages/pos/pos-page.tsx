@@ -31,7 +31,6 @@ import { usePosCart, getPosError } from '@/features/pos/use-pos-cart'
 import { usePosStore } from '@/features/pos/pos-store'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { usePermissions } from '@/lib/use-permissions'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -107,7 +106,6 @@ export function PosPage() {
   })
   const shift = shiftQuery.data?.data ?? null
 
-  const { can } = usePermissions()
   const sessionQuery = useQuery({
     queryKey: ['sale-sessions', 'current', branchId],
     queryFn: () => saleSessionApi.current({ branch_id: branchId }),
@@ -115,7 +113,6 @@ export function PosPage() {
     retry: false,
   })
   const session = sessionQuery.data?.data ?? null
-  const requiresSession = !can('shifts.operate')
 
   const shiftConfigQuery = useQuery({
     queryKey: ['shift-config', branchId],
@@ -125,7 +122,7 @@ export function PosPage() {
   })
   const shiftsEnabled = shiftConfigQuery.data?.data.shifts_enabled ?? true
   const requireSaleSession = shiftConfigQuery.data?.data.require_sale_session ?? true
-  const needsSession = requiresSession && requireSaleSession && !session
+  const needsSession = requireSaleSession && !session
 
   const branchShiftQuery = useQuery({
     queryKey: ['shifts', 'open', branchId],
