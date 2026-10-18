@@ -23,6 +23,7 @@ import {
   RotateCcw,
   ShieldCheck,
   TerminalSquare,
+  TrendingUp,
   UserRound,
   Users,
   Wallet,
@@ -466,12 +467,22 @@ function DrawerKpiGrid({ detail }: { detail: ShiftDetail }) {
   const k = detail.kpis
   const cells = [
     {
+      label: 'Total Sales',
+      value: formatCurrency(k.gross_sales),
+      meta: `${k.sales_transactions} ${k.sales_transactions === 1 ? 'Transaction' : 'Transactions'}`,
+      icon: TrendingUp,
+      tone: 'text-primary',
+      ring: 'bg-primary/15',
+      span: true,
+    },
+    {
       label: 'Opening Float',
       value: formatCurrency(k.opening_float),
       meta: 'start float',
       icon: Wallet,
       tone: 'text-primary',
       ring: 'bg-primary/15',
+      span: false,
     },
     {
       label: 'Net Cash Sales',
@@ -480,6 +491,7 @@ function DrawerKpiGrid({ detail }: { detail: ShiftDetail }) {
       icon: Banknote,
       tone: 'text-success',
       ring: 'bg-success/15',
+      span: false,
     },
     {
       label: 'Digital & POS',
@@ -488,6 +500,7 @@ function DrawerKpiGrid({ detail }: { detail: ShiftDetail }) {
       icon: CircleDollarSign,
       tone: 'text-info',
       ring: 'bg-info/15',
+      span: false,
     },
     {
       label: 'Expected In-Drawer',
@@ -496,12 +509,19 @@ function DrawerKpiGrid({ detail }: { detail: ShiftDetail }) {
       icon: Calculator,
       tone: 'text-warning',
       ring: 'bg-warning/15',
+      span: false,
     },
   ]
   return (
     <div className="grid grid-cols-2 gap-2.5">
       {cells.map((cell) => (
-        <div key={cell.label} className="flex flex-col justify-between rounded-2xl border border-border bg-surface-elevated p-3.5">
+        <div
+          key={cell.label}
+          className={cn(
+            'flex flex-col justify-between rounded-2xl border border-border bg-surface-elevated p-3.5',
+            cell.span && 'col-span-2',
+          )}
+        >
           <div className="flex items-center justify-between gap-1.5">
             <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">{cell.label}</span>
             <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-md', cell.ring, cell.tone)}>

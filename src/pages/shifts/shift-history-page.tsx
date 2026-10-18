@@ -743,6 +743,13 @@ function ShiftAuditCard({
       </div>
 
       <div className="grid grid-cols-2 gap-2 p-3.5 sm:grid-cols-4">
+        <BreakdownCell
+          label="Total Sales"
+          value={formatCurrency(s?.sales_total ?? 0)}
+          meta={`${s?.sales_count ?? 0} transactions`}
+          className="col-span-2 sm:col-span-4"
+          highlight
+        />
         <BreakdownCell label="Opening Float" value={formatCurrency(shift.opening_cash)} />
         <BreakdownCell label="Net Cash Sales" value={formatCurrency(s?.cash_sales ?? 0)} />
         <BreakdownCell label="POS-Card" value={formatCurrency(s?.digital_sales ?? 0)} />
@@ -840,13 +847,43 @@ function ShiftAuditCard({
   )
 }
 
-function BreakdownCell({ label, value }: { label: string; value: string }) {
+function BreakdownCell({
+  label,
+  value,
+  meta,
+  className,
+  highlight,
+}: {
+  label: string
+  value: string
+  meta?: string
+  className?: string
+  highlight?: boolean
+}) {
   return (
-    <div className="rounded-xl bg-surface-sunken p-2.5">
-      <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p>
+    <div
+      className={cn(
+        'rounded-xl p-2.5',
+        highlight ? 'bg-primary/10 ring-1 ring-primary/25' : 'bg-surface-sunken',
+        className,
+      )}
+    >
+      <p
+        className={cn(
+          'font-mono text-[9px] uppercase tracking-wider',
+          highlight ? 'text-primary' : 'text-muted-foreground',
+        )}
+      >
+        {label}
+      </p>
       <p className="mt-0.5 truncate font-mono text-sm font-bold tabular-nums text-foreground">
         {value}
       </p>
+      {meta && (
+        <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+          {meta}
+        </p>
+      )}
     </div>
   )
 }

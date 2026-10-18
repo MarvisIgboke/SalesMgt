@@ -130,11 +130,81 @@ class ShiftPolicyTest extends TestCase
             ])->assertOk()->assertJsonPath('data.status', 'closed');
     }
 
+    public function test_shift_sales_total_is_the_sum_of_every_representatives_sales(): void
+    {
+        [$branch, $product] = $this->boot();
+        $headers = ['Accept' => 'application/json', 'X-Branch-Id' => (string) $branch->id];
+
+        $manager = User::create([
+            'name' => 'Store Manager',
+            'email' => 'manager@demo.local',
+            'password' => 'password',
+            'business_id' => $branch->business_id,
+            'is_active' => true,
+        ]);
+        $manager->assignRole('Store Manager');
+
+        $rep1 = User::query()->where('email', 'cashier@demo.local')->firstOrFail();
+        $rep1->forceFill(['branch_ids' => [$branch->id], 'is_active' => true])->save();
+
+        $rep2 = User::create([
+            'name' => 'Rep Two',
+            'email' => 'rep2@demo.local',
+            'password' => 'password',
+            'business_id' => $branch->business_id,
+            'branch_ids' => [$branch->id],
+            'is_active' => true,
+        ]);
+        $rep2->assignRole('Sales Representative');
+
+        $shiftId = $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/shifts/open', [
+                'branch_id' => $branch->id,
+                'opening_cash' => 0,
+                'assigned_user_ids' => [$rep1->id, $rep2->id],
+            ])->assertOk()->json('data.id');
+
+        $this->sellOnSale($rep1, $headers, $product, 1);
+        $this->sellOnSale($rep2, $headers, $product, 2);
+
+        $expected = (float) Sale::query()->where('shift_id', $shiftId)->sum('total');
+        $this->assertGreaterThan(0, $expected);
+
+        $response = $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->getJson("/api/v1/shifts/{$shiftId}")
+            ->assertOk();
+
+        $this->assertEquals(round($expected, 2), $response->json('data.reconciliation.sales_total'));
+        $this->assertSame(2, $response->json('data.reconciliation.transaction_count'));
+        $this->assertSame(2, $response->json('data.kpis.sales_transactions'));
+    }
+
+    private function sellOnSale(User $rep, array $headers, Product $product, int $quantity): void
+    {
+        $this->actingAs($rep, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/sale-sessions/open', ['opening_balance' => 0])
+            ->assertOk();
+
+        $reference = $this->actingAs($rep, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/pos/cart/items', [
+                'product_id' => $product->id,
+                'quantity' => $quantity,
+            ])->assertOk()->json('data.reference');
+
+        $this->actingAs($rep, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/pos/sales/charge', [
+                'reference' => $reference,
+                'method' => 'cash',
+                'cash_received' => 100000,
+            ])->assertOk();
+    }
+
     /**
      * @return array{0: Branch, 1: Product}
      */
     private function boot(string $sku = 'WTR-75'): array
-    {        $admin = User::query()->where('email', 'owner@demo.local')->firstOrFail();
+    {
+        $admin = User::query()->where('email', 'owner@demo.local')->firstOrFail();
         $branch = Branch::query()->where('code', 'HQ')->firstOrFail();
         $product = Product::query()->where('sku', $sku)->firstOrFail();
 

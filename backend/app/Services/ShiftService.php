@@ -24,8 +24,26 @@ class ShiftService
 
     public const SETTING_REQUIRE_SALE_SESSION = 'require_sale_session';
 
+    /** @var array<int, Collection<int, int>> */
+    private array $saleIdCache = [];
+
     public function __construct(private readonly SaleSessionService $saleSessions)
     {
+    }
+
+    /**
+     * All sales rung up on a shift — regardless of which sales representative
+     * (or the manager) took them. The shift total is the sum of every rep's
+     * sales, so grouping is by shift_id rather than the shift opener's user_id.
+     *
+     * @return Collection<int, int>
+     */
+    private function shiftSaleIds(Shift $shift): Collection
+    {
+        return $this->saleIdCache[(int) $shift->id] ??= Sale::query()
+            ->where('shift_id', $shift->id)
+            ->whereIn('status', ['completed', 'partially_refunded'])
+            ->pluck('id');
     }
 
     /**
@@ -154,24 +172,20 @@ class ShiftService
 
     public function reconciliation(Shift $shift): array
     {
-        [$from, $to] = $this->window($shift);
-
-        $payments = $this->payments($shift, $from, $to);
+        $payments = $this->payments($shift);
 
         $cash = (float) $payments->get('cash');
-        $digital = $payments->get('digital');
+        $digital = (float) $payments->get('digital');
 
-        $refundsTotal = $this->refunds($shift, $from, $to)['total'];
+        $refundsTotal = $this->refunds($shift)['total'];
         $dropsTotal = ShiftCashMovement::query()->where('shift_id', $shift->id)->where('type', 'drop')->sum('amount');
         $payoutsTotal = ShiftCashMovement::query()->where('shift_id', $shift->id)->where('type', 'payout')->sum('amount');
 
         $expected = round((float) $shift->opening_cash + $cash - $refundsTotal - (float) $dropsTotal - (float) $payoutsTotal, 2);
 
         $salesQuery = fn () => Sale::query()
-            ->where('branch_id', $shift->branch_id)
-            ->where('user_id', $shift->user_id)
-            ->whereIn('status', ['completed', 'partially_refunded'])
-            ->whereBetween('created_at', [$from, $to]);
+            ->where('shift_id', $shift->id)
+            ->whereIn('status', ['completed', 'partially_refunded']);
 
         $salesTotal = (float) $salesQuery()->sum('total');
         $transactionCount = (int) $salesQuery()->count();
@@ -186,7 +200,7 @@ class ShiftService
             'drops_total' => round((float) $dropsTotal, 2),
             'payouts_total' => round((float) $payoutsTotal, 2),
             'expected_drawer' => $expected,
-            'payment_breakdown' => $this->paymentBreakdown($shift, $from, $to),
+            'payment_breakdown' => $this->paymentBreakdown($shift),
         ];
     }
 
@@ -284,17 +298,17 @@ class ShiftService
      */
     public function detail(Shift $shift): array
     {
-        [$from, $to] = $this->window($shift);
+        [$from] = $this->window($shift);
 
-        $cashPayments = $this->cashPayments($shift, $from, $to);
+        $cashPayments = $this->cashPayments($shift);
         $cashSum = (float) $cashPayments->sum('amount');
         $cashCount = $cashPayments->count();
 
-        $digitalPayments = $this->digitalPayments($shift, $from, $to);
+        $digitalPayments = $this->digitalPayments($shift);
         $digitalSum = (float) $digitalPayments->sum('amount');
         $digitalCount = $digitalPayments->count();
 
-        $refunds = $this->refunds($shift, $from, $to);
+        $refunds = $this->refunds($shift);
         $refundsTotal = (float) $refunds['total'];
 
         $movements = ShiftCashMovement::query()
@@ -400,9 +414,9 @@ class ShiftService
         return [$from, $to];
     }
 
-    private function payments(Shift $shift, Carbon $from, Carbon $to): Collection
+    private function payments(Shift $shift): Collection
     {
-        $rows = $this->confirmedPayments($shift, $from, $to)->get();
+        $rows = $this->confirmedPayments($shift)->get();
 
         return collect([
             'cash' => (float) $rows->where('method', 'cash')->sum('amount'),
@@ -410,41 +424,41 @@ class ShiftService
         ]);
     }
 
-    private function cashPayments(Shift $shift, Carbon $from, Carbon $to): Collection
+    private function cashPayments(Shift $shift): Collection
     {
-        return $this->confirmedPayments($shift, $from, $to)
+        return $this->confirmedPayments($shift)
             ->where('method', 'cash')
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();
     }
 
-    private function digitalPayments(Shift $shift, Carbon $from, Carbon $to): Collection
+    private function digitalPayments(Shift $shift): Collection
     {
-        return $this->confirmedPayments($shift, $from, $to)
+        return $this->confirmedPayments($shift)
             ->where('method', '!=', 'cash')
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();
     }
 
-    private function confirmedPayments(Shift $shift, Carbon $from, Carbon $to)
+    private function confirmedPayments(Shift $shift)
     {
+        $saleIds = $this->shiftSaleIds($shift);
+
         return Payment::query()
-            ->where('branch_id', $shift->branch_id)
+            ->whereIn('sale_id', $saleIds)
             ->whereIn('status', ['confirmed', 'completed'])
-            ->whereBetween('created_at', [$from, $to])
-            ->when($shift->user_id, fn ($q) => $q->where('created_by', $shift->user_id))
             ->select('id', 'method', 'amount', 'reference', 'created_at');
     }
 
-    private function paymentBreakdown(Shift $shift, Carbon $from, Carbon $to): array
+    private function paymentBreakdown(Shift $shift): array
     {
+        $saleIds = $this->shiftSaleIds($shift);
+
         $rows = Payment::query()
-            ->where('branch_id', $shift->branch_id)
+            ->whereIn('sale_id', $saleIds)
             ->whereIn('status', ['confirmed', 'completed'])
-            ->whereBetween('created_at', [$from, $to])
-            ->when($shift->user_id, fn ($q) => $q->where('created_by', $shift->user_id))
             ->groupBy('method')
             ->selectRaw('method, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS count')
             ->get();
@@ -456,13 +470,13 @@ class ShiftService
         ])->values()->all();
     }
 
-    private function refunds(Shift $shift, Carbon $from, Carbon $to): array
+    private function refunds(Shift $shift): array
     {
+        $saleIds = $this->shiftSaleIds($shift);
+
         $rows = Refund::query()
-            ->where('branch_id', $shift->branch_id)
+            ->whereIn('sale_id', $saleIds)
             ->where('status', 'approved')
-            ->whereBetween('created_at', [$from, $to])
-            ->when($shift->user_id, fn ($q) => $q->where('created_by', $shift->user_id))
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();

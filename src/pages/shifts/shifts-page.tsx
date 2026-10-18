@@ -263,7 +263,11 @@ function ManagerView() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Metric label="Opening float" value={formatCurrency(currentShift.opening_cash)} />
                 <Metric label="Expected cash" value={formatCurrency(currentShift.expected_cash)} />
-                <Metric label="Sales" value={String(currentShift.sales_count ?? 0)} />
+                <Metric
+                  label="Total sales"
+                  value={formatCurrency(currentShift.summary?.sales_total ?? 0)}
+                  hint={`${currentShift.summary?.sales_count ?? 0} sales`}
+                />
                 <Metric
                   label="Assigned reps"
                   value={String(currentShift.assigned_user_ids?.length ?? 0)}
@@ -815,11 +819,12 @@ function RepView() {
 /* Shared bits                                                                 */
 /* -------------------------------------------------------------------------- */
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-xl border border-border/70 p-4">
       <p className="text-[11px] text-muted-foreground">{label}</p>
       <p className="mt-1 text-xl font-bold tabular-nums text-foreground">{value}</p>
+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -857,6 +862,8 @@ function ShiftHistoryCard({ shift, onOpen }: { shift: Shift; onOpen: () => void 
         : (shift.variance ?? 0) < -0.005
           ? 'bg-destructive'
           : 'bg-success'
+  const totalSales = shift.summary?.sales_total ?? 0
+  const txnCount = shift.summary?.sales_count ?? shift.sales_count ?? 0
 
   return (
     <div
@@ -893,10 +900,14 @@ function ShiftHistoryCard({ shift, onOpen }: { shift: Shift; onOpen: () => void 
         </div>
         <div className="hidden shrink-0 items-center gap-4 sm:flex">
           <div className="text-right">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sales</p>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total sales</p>
             <p className="text-sm font-medium tabular-nums text-foreground">
-              {shift.sales_count ?? 0}
+              {formatCurrency(totalSales)}
             </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Txns</p>
+            <p className="text-sm font-medium tabular-nums text-foreground">{txnCount}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Expected</p>
@@ -909,9 +920,9 @@ function ShiftHistoryCard({ shift, onOpen }: { shift: Shift; onOpen: () => void 
       </div>
       <div className="flex items-center justify-between gap-3 border-t border-border/70 px-3.5 py-2 sm:hidden">
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          Sales{' '}
+          Total sales{' '}
           <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
-            {shift.sales_count ?? 0}
+            {formatCurrency(totalSales)}
           </span>
         </span>
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
