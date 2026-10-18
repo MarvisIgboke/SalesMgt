@@ -22,6 +22,9 @@ const PosPage = lazy(() => import('@/pages/pos/pos-page').then((m) => ({ default
 const SalesHistoryPage = lazy(() =>
   import('@/pages/sales/sales-history-page').then((m) => ({ default: m.SalesHistoryPage })),
 )
+const SaleDetailPage = lazy(() =>
+  import('@/pages/sales/sale-detail-page').then((m) => ({ default: m.SaleDetailPage })),
+)
 const ProductsPage = lazy(() =>
   import('@/pages/products/products-page').then((m) => ({ default: m.ProductsPage })),
 )
@@ -250,6 +253,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Page variant="cards">
                     <SalesHistoryPage />
+                  </Page>
+                ),
+              },
+              {
+                path: '/sales/:id',
+                element: (
+                  <Page variant="cards">
+                    <SaleDetailPage />
                   </Page>
                 ),
               },
