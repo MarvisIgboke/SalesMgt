@@ -922,6 +922,7 @@ function CloseProtocol({
   const supervisor = detail.supervisor
   const dirty = Math.abs(counted - detail.kpis.expected_drawer) >= 0.005
   const mode = detail.status === 'open' ? closureMode : 'full'
+  const openSessions = detail.sale_sessions.filter((session) => session.status === 'open').length
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface-sunken p-4">
@@ -1014,12 +1015,19 @@ function CloseProtocol({
         className="h-12 w-full"
         size="lg"
         loading={closing}
-        disabled={!canOperate || !coSign || counted <= 0}
+        disabled={!canOperate || !coSign || counted <= 0 || openSessions > 0}
         onClick={onClose}
       >
         <LogOut className="h-4 w-4" />
         {mode === 'full' ? 'Close Shift & Generate Z-Report' : 'Handover & Generate Z-Report'}
       </Button>
+
+      {openSessions > 0 && (
+        <p className="text-center text-[11px] text-warning">
+          {openSessions} {openSessions === 1 ? 'sale is' : 'sales are'} still open on this shift. Every sales
+          representative must close their sale before the shift can be closed.
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
         <span className="flex items-center gap-1">

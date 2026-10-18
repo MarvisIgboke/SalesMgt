@@ -7,6 +7,7 @@ use App\Models\BusinessSetting;
 use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\Shift;
 use App\Models\StockBatch;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -78,12 +79,62 @@ class ShiftPolicyTest extends TestCase
         $this->assertSame(1, Sale::query()->count());
     }
 
+    public function test_shift_cannot_be_closed_while_a_rep_sale_is_still_open(): void
+    {
+        [$branch] = $this->boot();
+
+        $headers = ['Accept' => 'application/json', 'X-Branch-Id' => (string) $branch->id];
+
+        $manager = User::create([
+            'name' => 'Store Manager',
+            'email' => 'manager@demo.local',
+            'password' => 'password',
+            'business_id' => $branch->business_id,
+            'is_active' => true,
+        ]);
+        $manager->assignRole('Store Manager');
+
+        $rep = User::query()->where('email', 'cashier@demo.local')->firstOrFail();
+        $rep->forceFill(['branch_ids' => [$branch->id], 'is_active' => true])->save();
+
+        $shiftId = $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/shifts/open', [
+                'branch_id' => $branch->id,
+                'opening_cash' => 1000,
+                'assigned_user_ids' => [$rep->id],
+            ])->assertOk()->json('data.id');
+
+        $sessionId = $this->actingAs($rep, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/sale-sessions/open', [
+                'shift_id' => $shiftId,
+                'opening_balance' => 0,
+            ])->assertOk()->json('data.id');
+
+        $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/shifts/close', [
+                'shift_id' => $shiftId,
+                'actual_cash' => 1000,
+            ])->assertStatus(422)->assertJsonPath('code', 'SHIFT_HAS_OPEN_SALES');
+
+        $this->assertSame('open', Shift::query()->find($shiftId)->status);
+
+        $this->actingAs($rep, 'sanctum')->withHeaders($headers)
+            ->postJson("/api/v1/sale-sessions/{$sessionId}/close", [
+                'closing_amount' => 0,
+            ])->assertOk();
+
+        $this->actingAs($manager, 'sanctum')->withHeaders($headers)
+            ->postJson('/api/v1/shifts/close', [
+                'shift_id' => $shiftId,
+                'actual_cash' => 1000,
+            ])->assertOk()->assertJsonPath('data.status', 'closed');
+    }
+
     /**
      * @return array{0: Branch, 1: Product}
      */
     private function boot(string $sku = 'WTR-75'): array
-    {
-        $admin = User::query()->where('email', 'owner@demo.local')->firstOrFail();
+    {        $admin = User::query()->where('email', 'owner@demo.local')->firstOrFail();
         $branch = Branch::query()->where('code', 'HQ')->firstOrFail();
         $product = Product::query()->where('sku', $sku)->firstOrFail();
 

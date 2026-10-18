@@ -122,6 +122,19 @@ class ShiftService
 
     public function close(Shift $shift, ?float $actualCash, ?string $notes): array
     {
+        $openSales = SaleSession::query()
+            ->where('shift_id', $shift->id)
+            ->where('status', 'open')
+            ->count();
+
+        if ($openSales > 0) {
+            throw new ApiException(
+                'SHIFT_HAS_OPEN_SALES',
+                'This shift cannot be closed while sales representatives still have open sales.',
+                422,
+            );
+        }
+
         $reconciliation = $this->reconciliation($shift);
 
         $shift->forceFill([
