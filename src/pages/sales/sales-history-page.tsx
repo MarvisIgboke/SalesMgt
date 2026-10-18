@@ -45,6 +45,7 @@ import { useAppStore } from '@/stores/app'
 import { formatCurrency, formatDateTime, formatNumber, cn } from '@/lib/utils'
 import { toast } from '@/components/ui/sonner'
 import { SaleDetailSheet } from './sale-detail-view'
+import { ReceiptReprintButtons } from '@/features/pos/receipt-reprint-buttons'
 
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'card', 'online', 'credit', 'split']
 const STATUSES = ['completed', 'partially_refunded', 'refunded', 'cancelled', 'awaiting_approval']
@@ -757,16 +758,19 @@ function SaleCard({
         <span className="font-mono text-[10px] text-muted-foreground">
           {formatDateTime(sale.created_at)}
         </span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="font-mono text-[10px]"
-          onClick={() => onView(sale.id)}
-        >
-          <Eye className="h-3.5 w-3.5" />
-          Inspect tape
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <ReceiptReprintButtons saleReference={sale.reference} />
+          <Button
+            variant="outline"
+            size="sm"
+            className="font-mono text-[10px]"
+            onClick={() => onView(sale.id)}
+          >
+            <Eye className="h-3.5 w-3.5" />
+            Inspect tape
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     </article>
   )
