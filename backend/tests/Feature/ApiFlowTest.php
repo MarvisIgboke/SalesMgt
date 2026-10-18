@@ -67,6 +67,53 @@ class ApiFlowTest extends TestCase
         $this->assertSame('paid', $sale->payment_status);
     }
 
+    public function test_held_sales_can_be_listed_and_resumed_to_complete(): void
+    {
+        [$admin, $branch, $product] = $this->scene('WTR-75');
+        $this->ensureStock($product, $branch, 10);
+
+        $held = $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 2,
+        ])->assertOk();
+        $heldReference = $held->json('data.reference');
+
+        $this->postJson('/api/v1/pos/sales/hold', ['reference' => $heldReference])
+            ->assertOk()
+            ->assertJsonPath('data.reference', $heldReference);
+
+        $this->assertDatabaseHas('pos_carts', [
+            'reference' => $heldReference,
+            'state' => 'held',
+        ]);
+
+        $next = $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+        $this->assertNotSame($heldReference, $next->json('data.reference'));
+
+        $list = $this->getJson('/api/v1/pos/sales/held')->assertOk();
+        $this->assertCount(1, $list->json('data.carts'));
+        $this->assertSame($heldReference, $list->json('data.carts.0.reference'));
+
+        $resumed = $this->postJson('/api/v1/pos/sales/resume', ['reference' => $heldReference])
+            ->assertOk()
+            ->assertJsonPath('data.reference', $heldReference);
+        $this->assertSame(2.0, (float) $resumed->json('data.items.0.quantity'));
+
+        $this->postJson('/api/v1/pos/sales/charge', [
+            'reference' => $heldReference,
+            'method' => 'cash',
+            'cash_received' => 1000,
+        ])->assertOk()->assertJsonPath('data.status', 'completed');
+
+        $this->assertDatabaseHas('pos_carts', [
+            'reference' => $heldReference,
+            'state' => 'converted',
+        ]);
+    }
+
     public function test_charge_is_blocked_when_no_shift_is_open(): void
     {
         [$admin, $branch, $product] = $this->scene('WTR-75');

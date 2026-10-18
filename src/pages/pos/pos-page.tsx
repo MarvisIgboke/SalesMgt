@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
+  Clock,
   Eraser,
+  FolderOpen,
   Keyboard,
   Loader2,
   Minus,
@@ -18,7 +20,7 @@ import {
   UserRoundPlus,
   Wifi,
 } from 'lucide-react'
-import { posApi, type CartItem, type SellableProduct } from '@/lib/api/endpoints/pos'
+import { posApi, type CartItem, type HeldSale, type SellableProduct } from '@/lib/api/endpoints/pos'
 import { catalogApi } from '@/lib/api/endpoints/products'
 import { customersApi, type Customer } from '@/lib/api/endpoints/customers'
 import { shiftApi, type Shift } from '@/lib/api/endpoints/shifts'
@@ -64,9 +66,11 @@ export function PosPage() {
   const [payOpen, setPayOpen] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
   const [customerOpen, setCustomerOpen] = useState(false)
+  const [heldOpen, setHeldOpen] = useState(false)
   const [matched, setMatched] = useState<SellableProduct | null>(null)
 
   const searchRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
   const setLastProduct = usePosStore((s) => s.setLastProduct)
   const cartReference = usePosStore((s) => s.cartReference)
 
@@ -74,7 +78,7 @@ export function PosPage() {
   const branchId = context?.branch?.id
   const userName = useAuthStore((s) => s.session?.user.name)
 
-  const { cart, addItem, updateItem, removeItem, setCustomer, clearCart } = usePosCart()
+  const { cart, addItem, updateItem, removeItem, setCustomer, clearCart, applyCart } = usePosCart()
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 300)
@@ -207,9 +211,28 @@ export function PosPage() {
     mutationFn: () => posApi.holdSale({ reference: cartReference ?? undefined }),
     onSuccess: () => {
       clearCart()
+      queryClient.invalidateQueries({ queryKey: ['pos-held-sales'] })
       toast.success('Sale held — draft parked for later.')
     },
     onError: (error) => toast.error(getPosError(error).message || 'Could not hold the sale.'),
+  })
+
+  const heldQuery = useQuery({
+    queryKey: ['pos-held-sales'],
+    queryFn: () => posApi.getHeldSales(),
+    enabled: heldOpen,
+  })
+  const heldSales = heldQuery.data?.data.carts ?? []
+
+  const resume = useMutation({
+    mutationFn: (reference: string) => posApi.resumeSale(reference),
+    onSuccess: ({ data }) => {
+      applyCart(data)
+      setHeldOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['pos-held-sales'] })
+      toast.success('Sale restored to the till.')
+    },
+    onError: (error) => toast.error(getPosError(error).message || 'Could not resume the sale.'),
   })
 
   const clearAll = async () => {
@@ -386,6 +409,7 @@ export function PosPage() {
             onClear={clearAll}
             onCustomer={() => setCustomerOpen(true)}
             onScan={() => setScannerOpen(true)}
+            onHeld={() => setHeldOpen(true)}
           />
         </div>
 
@@ -495,6 +519,14 @@ export function PosPage() {
 
       <ScannerDialog open={scannerOpen} onOpenChange={setScannerOpen} onBarcode={handleBarcode} />
       <PaymentDialog open={payOpen} onOpenChange={setPayOpen} />
+      <HeldSalesDialog
+        open={heldOpen}
+        onOpenChange={setHeldOpen}
+        sales={heldSales}
+        loading={heldQuery.isLoading}
+        resuming={resume.isPending}
+        onResume={(reference) => resume.mutate(reference)}
+      />
       <CustomerDialog
         open={customerOpen}
         onOpenChange={setCustomerOpen}
@@ -617,6 +649,7 @@ function OperatorRibbon({
   onClear,
   onCustomer,
   onScan,
+  onHeld,
 }: {
   canHold: boolean
   canClear: boolean
@@ -625,6 +658,7 @@ function OperatorRibbon({
   onClear: () => void
   onCustomer: () => void
   onScan: () => void
+  onHeld: () => void
 }) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar rounded-xl bg-surface-sunken p-2">
@@ -639,6 +673,9 @@ function OperatorRibbon({
       </RibbonButton>
       <RibbonButton icon={<ScanLine className="h-4 w-4 text-primary" />} onClick={onScan}>
         Scan
+      </RibbonButton>
+      <RibbonButton icon={<FolderOpen className="h-4 w-4 text-muted-foreground" />} onClick={onHeld}>
+        Held sales
       </RibbonButton>
     </div>
   )
@@ -958,6 +995,92 @@ function CustomerDialog({
                 </span>
               </span>
             </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function HeldSalesDialog({
+  open,
+  onOpenChange,
+  sales,
+  loading,
+  resuming,
+  onResume,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  sales: HeldSale[]
+  loading: boolean
+  resuming: boolean
+  onResume: (reference: string) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[85vh] max-w-lg flex-col">
+        <DialogHeader>
+          <DialogTitle>Held sales</DialogTitle>
+          <DialogDescription>
+            Parked drafts you can restore to the till and complete.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
+          {loading && (
+            <div className="space-y-2 py-1">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+              ))}
+            </div>
+          )}
+
+          {!loading && sales.length === 0 && (
+            <EmptyState
+              icon={<FolderOpen className="h-6 w-6" />}
+              title="No held sales"
+              description="Hold a draft from the till and it will appear here."
+            />
+          )}
+
+          {sales.map((sale) => (
+            <div
+              key={sale.reference}
+              className="mb-1 flex items-center gap-3 rounded-lg border border-border/60 p-2.5"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent font-mono text-[11px] font-bold text-foreground">
+                {sale.items_count}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {sale.customer_name || 'Walk-in customer'}
+                </p>
+                <p className="truncate font-mono text-[10px] text-muted-foreground">
+                  {sale.reference} · {sale.items_count} item
+                  {sale.items_count === 1 ? '' : 's'}
+                </p>
+                {sale.held_until && (
+                  <p className="mt-0.5 flex items-center gap-1 font-mono text-[10px] text-warning">
+                    <Clock className="h-3 w-3" />
+                    Held until {new Date(sale.held_until).toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="font-mono text-sm font-bold text-foreground">
+                  {formatCurrency(sale.total)}
+                </p>
+                <Button
+                  size="sm"
+                  className="mt-1 h-8"
+                  disabled={resuming}
+                  onClick={() => onResume(sale.reference)}
+                >
+                  Resume
+                </Button>
+              </div>
+            </div>
           ))}
         </div>
       </DialogContent>
