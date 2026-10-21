@@ -220,9 +220,18 @@ export function PosPage() {
   const heldQuery = useQuery({
     queryKey: ['pos-held-sales'],
     queryFn: () => posApi.getHeldSales(),
-    enabled: heldOpen,
+    staleTime: 30_000,
   })
   const heldSales = heldQuery.data?.data.carts ?? []
+
+  const startNewSale = () => {
+    if ((cart?.items.length ?? 0) > 0) {
+      hold.mutate()
+      return
+    }
+    clearCart()
+    searchRef.current?.focus()
+  }
 
   const resume = useMutation({
     mutationFn: (reference: string) => posApi.resumeSale(reference),
@@ -406,10 +415,12 @@ export function PosPage() {
             canClear={(cart?.items.length ?? 0) > 0}
             holdBusy={hold.isPending}
             onHold={() => hold.mutate()}
+            onNewSale={startNewSale}
             onClear={clearAll}
             onCustomer={() => setCustomerOpen(true)}
             onScan={() => setScannerOpen(true)}
             onHeld={() => setHeldOpen(true)}
+            heldCount={heldSales.length}
           />
         </div>
 
@@ -646,22 +657,29 @@ function OperatorRibbon({
   canClear,
   holdBusy,
   onHold,
+  onNewSale,
   onClear,
   onCustomer,
   onScan,
   onHeld,
+  heldCount,
 }: {
   canHold: boolean
   canClear: boolean
   holdBusy: boolean
   onHold: () => void
+  onNewSale: () => void
   onClear: () => void
   onCustomer: () => void
   onScan: () => void
   onHeld: () => void
+  heldCount: number
 }) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar rounded-xl bg-surface-sunken p-2">
+      <RibbonButton icon={<Plus className="h-4 w-4 text-primary" />} onClick={onNewSale} disabled={holdBusy}>
+        New sale
+      </RibbonButton>
       <RibbonButton icon={<PauseCircle className="h-4 w-4 text-warning" />} onClick={onHold} disabled={!canHold || holdBusy}>
         Hold
       </RibbonButton>
@@ -674,7 +692,11 @@ function OperatorRibbon({
       <RibbonButton icon={<ScanLine className="h-4 w-4 text-primary" />} onClick={onScan}>
         Scan
       </RibbonButton>
-      <RibbonButton icon={<FolderOpen className="h-4 w-4 text-muted-foreground" />} onClick={onHeld}>
+      <RibbonButton
+        icon={<FolderOpen className="h-4 w-4 text-muted-foreground" />}
+        onClick={onHeld}
+        badge={heldCount}
+      >
         Held sales
       </RibbonButton>
     </div>
@@ -685,11 +707,13 @@ function RibbonButton({
   icon,
   onClick,
   disabled,
+  badge,
   children,
 }: {
   icon: React.ReactNode
   onClick: () => void
   disabled?: boolean
+  badge?: number
   children: React.ReactNode
 }) {
   return (
@@ -701,6 +725,11 @@ function RibbonButton({
     >
       {icon}
       {children}
+      {badge != null && badge > 0 && (
+        <span className="grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 font-mono text-[9px] font-bold text-primary-foreground">
+          {badge}
+        </span>
+      )}
     </button>
   )
 }
