@@ -174,6 +174,11 @@ class PosController extends Controller
         $data = $request->validate(['reference' => ['nullable', 'string']]);
 
         $cart = $this->pos->resolveCart($data['reference'] ?? null, $request->user(), $this->branchId($request));
+
+        if ((int) $cart->user_id !== (int) $request->user()->id) {
+            abort(403);
+        }
+
         $cart = $this->pos->hold($cart);
 
         return ApiResponse::success([
@@ -197,8 +202,7 @@ class PosController extends Controller
 
         $data = $request->validate(['reference' => ['required', 'string']]);
 
-        $cart = $this->pos->resolveCart($data['reference'], $request->user(), $this->branchId($request));
-        $cart = $this->pos->resume($cart);
+        $cart = $this->pos->resumeHeld($data['reference'], $request->user(), $this->branchId($request));
 
         return ApiResponse::success($this->pos->presentCart($cart, $request->user()));
     }

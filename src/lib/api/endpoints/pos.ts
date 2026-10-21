@@ -203,7 +203,7 @@ export const posApi = {
     http.get<ApiEnvelope<Receipt>>(`/pos/receipts/${encodeURIComponent(reference)}`),
 
   holdSale: (payload: CartPayload) =>
-    http.post<ApiEnvelope<{ reference: string; held_until: string }>>(
+    http.post<ApiEnvelope<{ reference: string; held_until: string | null }>>(
       '/pos/sales/hold',
       payload,
     ),

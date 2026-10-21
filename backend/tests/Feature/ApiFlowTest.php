@@ -114,6 +114,61 @@ class ApiFlowTest extends TestCase
         ]);
     }
 
+    public function test_holding_an_empty_cart_is_rejected(): void
+    {
+        $this->scene('WTR-75');
+
+        $cart = $this->postJson('/api/v1/pos/sales/initialize', [])->assertOk();
+
+        $this->postJson('/api/v1/pos/sales/hold', [
+            'reference' => $cart->json('data.reference'),
+        ])->assertStatus(422)->assertJsonPath('code', 'empty_cart');
+    }
+
+    public function test_a_held_sale_cannot_be_resumed_by_another_user(): void
+    {
+        [$admin, $branch, $product] = $this->scene('WTR-75');
+        $this->ensureStock($product, $branch, 10);
+
+        $held = $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+        $heldReference = $held->json('data.reference');
+
+        $this->postJson('/api/v1/pos/sales/hold', ['reference' => $heldReference])->assertOk();
+
+        $cashier = User::query()->where('email', 'cashier@demo.local')->firstOrFail();
+        $this->actingAs($cashier, 'sanctum');
+
+        $this->postJson('/api/v1/pos/sales/resume', ['reference' => $heldReference])
+            ->assertStatus(404)
+            ->assertJsonPath('code', 'not_found');
+
+        $this->getJson('/api/v1/pos/sales/held')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.carts');
+    }
+
+    public function test_a_sale_can_only_be_resumed_once_while_held(): void
+    {
+        [$admin, $branch, $product] = $this->scene('WTR-75');
+        $this->ensureStock($product, $branch, 10);
+
+        $held = $this->postJson('/api/v1/pos/cart/items', [
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+        $heldReference = $held->json('data.reference');
+
+        $this->postJson('/api/v1/pos/sales/hold', ['reference' => $heldReference])->assertOk();
+        $this->postJson('/api/v1/pos/sales/resume', ['reference' => $heldReference])->assertOk();
+
+        $this->postJson('/api/v1/pos/sales/resume', ['reference' => $heldReference])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'not_held');
+    }
+
     public function test_charge_is_blocked_when_no_shift_is_open(): void
     {
         [$admin, $branch, $product] = $this->scene('WTR-75');

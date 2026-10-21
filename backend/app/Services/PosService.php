@@ -444,9 +444,13 @@ class PosService
 
     public function hold(PosCart $cart): PosCart
     {
+        if (($cart->items ?? []) === []) {
+            throw new ApiException('empty_cart', 'There is nothing to hold.', 422);
+        }
+
         $cart->forceFill([
             'state' => 'held',
-            'held_until' => now()->addMinutes(30),
+            'held_until' => null,
         ])->save();
 
         return $cart->fresh();
@@ -458,7 +462,7 @@ class PosService
             ->where('user_id', $user->id)
             ->where('state', 'held')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
-            ->orderByDesc('held_until')
+            ->orderByDesc('updated_at')
             ->orderByDesc('id');
 
         return $query->get()
@@ -484,8 +488,26 @@ class PosService
         ];
     }
 
-    public function resume(PosCart $cart): PosCart
+    public function resumeHeld(?string $reference, User $user, ?int $branchId): PosCart
     {
+        if ($reference === null || $reference === '') {
+            throw new ApiException('reference_required', 'Select a held sale to resume.', 422);
+        }
+
+        $cart = PosCart::query()->where('reference', $reference)->first();
+
+        $owned = $cart !== null
+            && (int) $cart->user_id === (int) $user->id
+            && ($branchId === null || (int) $cart->branch_id === (int) $branchId);
+
+        if (! $owned) {
+            throw new ApiException('not_found', 'Held sale not found.', 404);
+        }
+
+        if ($cart->state !== 'held') {
+            throw new ApiException('not_held', 'This sale is no longer on hold.', 422);
+        }
+
         $cart->forceFill(['state' => 'active', 'held_until' => null])->save();
 
         return $cart->fresh();

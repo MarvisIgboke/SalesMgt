@@ -1060,10 +1060,10 @@ function HeldSalesDialog({
                   {sale.reference} · {sale.items_count} item
                   {sale.items_count === 1 ? '' : 's'}
                 </p>
-                {sale.held_until && (
-                  <p className="mt-0.5 flex items-center gap-1 font-mono text-[10px] text-warning">
+                {sale.updated_at && (
+                  <p className="mt-0.5 flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    Held until {new Date(sale.held_until).toLocaleTimeString()}
+                    Held {new Date(sale.updated_at).toLocaleTimeString()}
                   </p>
                 )}
               </div>
